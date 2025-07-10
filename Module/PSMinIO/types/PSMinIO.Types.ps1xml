@@ -138,16 +138,16 @@
 
   <!-- ChunkedTransferState Type -->
   <Type>
-    <n>PSMinIO.Models.ChunkedTransferState</n>
+    <Name>PSMinIO.Models.ChunkedTransferState</Name>
     <Members>
       <ScriptProperty>
-        <n>ProgressFormatted</n>
+        <Name>ProgressFormatted</Name>
         <GetScriptBlock>
           return "{0:F1}%" -f $this.ProgressPercentage
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>BytesTransferredFormatted</n>
+        <Name>BytesTransferredFormatted</Name>
         <GetScriptBlock>
           if ($this.BytesTransferred -eq $null) { return "0 B" }
           $sizes = @("B", "KB", "MB", "GB", "TB", "PB")
@@ -161,7 +161,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>TotalSizeFormatted</n>
+        <Name>TotalSizeFormatted</Name>
         <GetScriptBlock>
           if ($this.TotalSize -eq $null) { return "0 B" }
           $sizes = @("B", "KB", "MB", "GB", "TB", "PB")
@@ -175,7 +175,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>ChunkSizeFormatted</n>
+        <Name>ChunkSizeFormatted</Name>
         <GetScriptBlock>
           if ($this.ChunkSize -eq $null) { return "0 B" }
           $sizes = @("B", "KB", "MB", "GB", "TB", "PB")
@@ -189,7 +189,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>ElapsedTime</n>
+        <Name>ElapsedTime</Name>
         <GetScriptBlock>
           if ($this.StartTime -eq $null) { return "Unknown" }
           $elapsed = [DateTime]::UtcNow - $this.StartTime
@@ -197,7 +197,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>TransferStatus</n>
+        <Name>TransferStatus</Name>
         <GetScriptBlock>
           if ($this.IsComplete) {
             return "Complete"
@@ -209,7 +209,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>RemainingChunks</n>
+        <Name>RemainingChunks</Name>
         <GetScriptBlock>
           return $this.TotalChunks - $this.CompletedChunkCount
         </GetScriptBlock>
@@ -219,10 +219,10 @@
 
   <!-- ChunkInfo Type -->
   <Type>
-    <n>PSMinIO.Models.ChunkInfo</n>
+    <Name>PSMinIO.Models.ChunkInfo</Name>
     <Members>
       <ScriptProperty>
-        <n>SizeFormatted</n>
+        <Name>SizeFormatted</Name>
         <GetScriptBlock>
           if ($this.Size -eq $null) { return "0 B" }
           $sizes = @("B", "KB", "MB", "GB", "TB", "PB")
@@ -236,13 +236,13 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>ChunkRange</n>
+        <Name>ChunkRange</Name>
         <GetScriptBlock>
           return "{0}-{1}" -f $this.StartByte, $this.EndByte
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <n>Status</n>
+        <Name>Status</Name>
         <GetScriptBlock>
           if ($this.IsCompleted) {
             return "Completed"
