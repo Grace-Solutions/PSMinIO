@@ -195,7 +195,7 @@ namespace PSMinIO.Utils
         private static object[] ProcessLogArguments(object[] args)
         {
             if (args == null || args.Length == 0)
-                return args;
+                return args ?? new object[0];
 
             var processedArgs = new object[args.Length];
 

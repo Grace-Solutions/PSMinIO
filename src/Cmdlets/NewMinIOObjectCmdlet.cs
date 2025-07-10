@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
@@ -144,7 +145,7 @@ namespace PSMinIO.Cmdlets
                     // Create bucket directory structure if specified
                     if (!string.IsNullOrWhiteSpace(BucketDirectory))
                     {
-                        var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory);
+                        var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
                         if (!string.IsNullOrEmpty(sanitizedDirectory))
                         {
                             MinIOLogger.WriteVerbose(this, "Ensuring bucket directory exists: {0}", sanitizedDirectory);
@@ -219,8 +220,8 @@ namespace PSMinIO.Cmdlets
                 var basePath = Directory.FullName;
                 allFiles = allFiles.Where(f =>
                 {
-                    var relativePath = Path.GetRelativePath(basePath, f.FullName);
-                    var depth = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Length - 1;
+                    var relativePath = f.FullName.Substring(basePath.Length).TrimStart('\\', '/');
+                    var depth = relativePath.Split(new char[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries).Length - 1;
                     return depth <= MaxDepth;
                 }).ToArray();
             }
@@ -250,7 +251,7 @@ namespace PSMinIO.Cmdlets
         {
             try
             {
-                var result = filter.InvokeWithContext(null, new[] { new PSVariable("_", file) });
+                var result = filter.InvokeWithContext(null, new List<PSVariable> { new PSVariable("_", file) });
                 return result.Count > 0 && LanguagePrimitives.IsTrue(result[0]);
             }
             catch (Exception ex)
@@ -400,7 +401,7 @@ namespace PSMinIO.Cmdlets
                 var objectName = file.Name;
                 if (!string.IsNullOrWhiteSpace(BucketDirectory))
                 {
-                    var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory);
+                    var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
                     objectName = $"{sanitizedDirectory}/{file.Name}";
                 }
                 return objectName;
@@ -415,7 +416,7 @@ namespace PSMinIO.Cmdlets
                 else
                 {
                     // Maintain directory structure relative to the base directory
-                    var relativePath = Path.GetRelativePath(Directory!.FullName, file.FullName);
+                    var relativePath = file.FullName.Substring(Directory!.FullName.Length).TrimStart('\\', '/');
                     return relativePath.Replace('\\', '/'); // Ensure forward slashes for object storage
                 }
             }

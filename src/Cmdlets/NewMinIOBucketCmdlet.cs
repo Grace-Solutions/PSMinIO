@@ -41,7 +41,7 @@ namespace PSMinIO.Cmdlets
         protected override void ProcessRecord()
         {
             ValidateConnection();
-            ValidateBucketName(BucketName);
+            ValidateBucketNameForCreation(BucketName);
 
             // Use region from parameter or configuration
             var region = Region ?? Configuration.Region;
@@ -118,10 +118,10 @@ namespace PSMinIO.Cmdlets
         }
 
         /// <summary>
-        /// Validates the bucket name according to MinIO/S3 naming conventions
+        /// Validates the bucket name according to MinIO/S3 naming conventions for bucket creation
         /// </summary>
         /// <param name="bucketName">Bucket name to validate</param>
-        protected override void ValidateBucketName(string bucketName, string parameterName = "BucketName")
+        private void ValidateBucketNameForCreation(string bucketName, string parameterName = "BucketName")
         {
             base.ValidateBucketName(bucketName, parameterName);
 

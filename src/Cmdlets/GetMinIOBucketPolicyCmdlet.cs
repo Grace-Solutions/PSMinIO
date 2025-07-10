@@ -37,7 +37,7 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConfiguration();
+            ValidateConnection();
             ValidateBucketName(BucketName);
 
             ExecuteOperation("GetBucketPolicy", () =>

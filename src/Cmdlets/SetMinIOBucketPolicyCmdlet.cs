@@ -67,7 +67,7 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConfiguration();
+            ValidateConnection();
             ValidateBucketName(BucketName);
 
             // Get the policy JSON based on the parameter set
@@ -78,7 +78,7 @@ namespace PSMinIO.Cmdlets
             }
 
             // Validate the policy JSON
-            if (!ValidatePolicyJson(policyJson))
+            if (!ValidatePolicyJson(policyJson!))
             {
                 return; // Error already written
             }
@@ -89,11 +89,7 @@ namespace PSMinIO.Cmdlets
                 return;
             }
 
-            // Override confirmation if Force is specified
-            if (Force.IsPresent)
-            {
-                ConfirmPreference = ConfirmImpact.None;
-            }
+            // Force parameter is handled by ShouldProcess automatically
 
             if (ShouldProcess(BucketName, "Set bucket policy"))
             {
@@ -113,7 +109,7 @@ namespace PSMinIO.Cmdlets
 
                     MinIOLogger.WriteVerbose(this, "Setting policy for bucket '{0}'", BucketName);
                     MinIOLogger.WriteVerbose(this, "Policy JSON ({0} characters): {1}", 
-                        policyJson.Length, policyJson.Length > 200 ? policyJson.Substring(0, 200) + "..." : policyJson);
+                        policyJson!.Length, policyJson.Length > 200 ? policyJson.Substring(0, 200) + "..." : policyJson);
 
                     Client.SetBucketPolicy(BucketName, policyJson);
 

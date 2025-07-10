@@ -70,12 +70,6 @@ namespace PSMinIO.Cmdlets
         public SwitchParameter SkipCertificateValidation { get; set; }
 
         /// <summary>
-        /// Skip SSL certificate validation (use with caution)
-        /// </summary>
-        [Parameter]
-        public SwitchParameter SkipCertificateValidation { get; set; }
-
-        /// <summary>
         /// Accept self-signed certificates
         /// </summary>
         [Parameter]
@@ -154,7 +148,7 @@ namespace PSMinIO.Cmdlets
                     if (!string.IsNullOrWhiteSpace(SessionVariable))
                     {
                         SessionState.PSVariable.Set(SessionVariable, connection);
-                        MinIOLogger.WriteVerbose(this, "Connection stored in session variable: {0}", SessionVariable);
+                        MinIOLogger.WriteVerbose(this, "Connection stored in session variable: {0}", SessionVariable!);
                     }
 
                     // Return the connection object

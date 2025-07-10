@@ -36,12 +36,10 @@
   <ItemGroup>
     <PackageReference Include="Minio" Version="5.0.0" />
     <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" />
-    <PackageReference Include="System.Text.Json" Version="6.0.0" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="src\**\*.cs" />
-  </ItemGroup>
+
 
   <ItemGroup>
     <None Include="PSMinIO.psd1">
@@ -56,8 +54,6 @@
     <ItemGroup>
       <ModuleFiles Include="$(OutputPath)\PSMinIO.dll" />
       <ModuleFiles Include="$(OutputPath)\PSMinIO.pdb" />
-      <ModuleFiles Include="$(OutputPath)\Minio.dll" />
-      <ModuleFiles Include="$(OutputPath)\System.Text.Json.dll" />
       <ModuleFiles Include="PSMinIO.psd1" />
     </ItemGroup>
     <Copy SourceFiles="@(ModuleFiles)" DestinationFolder="Module\PSMinIO\bin\" />

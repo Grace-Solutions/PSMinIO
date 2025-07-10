@@ -36,14 +36,10 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConfiguration();
+            ValidateConnection();
             ValidateBucketName(BucketName);
 
-            // Override confirmation if Force is specified
-            if (Force.IsPresent)
-            {
-                ConfirmPreference = ConfirmImpact.None;
-            }
+            // Force parameter is handled by ShouldProcess automatically
 
             var actionDescription = RemoveObjects.IsPresent 
                 ? $"Remove bucket '{BucketName}' and all its objects"

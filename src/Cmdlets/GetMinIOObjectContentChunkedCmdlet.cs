@@ -123,9 +123,9 @@ namespace PSMinIO.Cmdlets
                         return;
                     }
 
-                    MinIOLogger.WriteVerbose(this, 
-                        "Starting chunked download of object '{0}' from bucket '{1}' (Size: {2}, ChunkSize: {3})", 
-                        ObjectName, BucketName, SizeFormatter.FormatSize(objectInfo.Size), SizeFormatter.FormatSize(ChunkSize));
+                    MinIOLogger.WriteVerbose(this,
+                        "Starting chunked download of object '{0}' from bucket '{1}' (Size: {2}, ChunkSize: {3})",
+                        ObjectName, BucketName, SizeFormatter.FormatBytes(objectInfo.Size), SizeFormatter.FormatBytes(ChunkSize));
 
                     // Download using chunked transfer
                     var downloadedFile = DownloadObjectChunked(objectInfo);
@@ -141,7 +141,7 @@ namespace PSMinIO.Cmdlets
                         WriteObject(FilePath);
                     }
 
-                }, $"Bucket: {BucketName}, Object: {ObjectName}, File: {FilePath.FullName}, ChunkSize: {SizeFormatter.FormatSize(ChunkSize)}");
+                }, $"Bucket: {BucketName}, Object: {ObjectName}, File: {FilePath.FullName}, ChunkSize: {SizeFormatter.FormatBytes(ChunkSize)}");
             }
         }
 
@@ -235,6 +235,7 @@ namespace PSMinIO.Cmdlets
                     return FilePath;
                 }
             }
+#pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in error handling
             catch (Exception ex)
             {
                 // Save resume data on failure if resume is enabled
@@ -253,6 +254,7 @@ namespace PSMinIO.Cmdlets
 
                 throw;
             }
+#pragma warning restore CS0168
 
             return null;
         }
@@ -272,7 +274,7 @@ namespace PSMinIO.Cmdlets
             }
 
             // Check if file already exists
-            if (FilePath.Exists && !Force.IsPresent)
+            if (FilePath!.Exists && !Force.IsPresent)
             {
                 WriteError(new ErrorRecord(
                     new InvalidOperationException($"File '{FilePath.FullName}' already exists. Use -Force to overwrite."),

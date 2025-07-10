@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
@@ -179,7 +180,7 @@ namespace PSMinIO.Cmdlets
                     // Create bucket directory structure if specified
                     if (!string.IsNullOrWhiteSpace(BucketDirectory))
                     {
-                        var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory);
+                        var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
                         if (!string.IsNullOrEmpty(sanitizedDirectory))
                         {
                             MinIOLogger.WriteVerbose(this, "Ensuring bucket directory exists: {0}", sanitizedDirectory);
@@ -189,7 +190,7 @@ namespace PSMinIO.Cmdlets
 
                     UploadFileCollectionChunked(Path!);
 
-                }, $"Bucket: {BucketName}, Files: {Path.Length}, ChunkSize: {SizeFormatter.FormatSize(ChunkSize)}");
+                }, $"Bucket: {BucketName}, Files: {Path.Length}, ChunkSize: {SizeFormatter.FormatBytes(ChunkSize)}");
             }
         }
 
@@ -235,7 +236,7 @@ namespace PSMinIO.Cmdlets
                     MinIOLogger.WriteVerbose(this, "Found {0} files in directory '{1}'", files.Length, Directory.FullName);
                     UploadFileCollectionChunked(files);
 
-                }, $"Bucket: {BucketName}, Directory: {Directory.FullName}, ChunkSize: {SizeFormatter.FormatSize(ChunkSize)}");
+                }, $"Bucket: {BucketName}, Directory: {Directory.FullName}, ChunkSize: {SizeFormatter.FormatBytes(ChunkSize)}");
             }
         }
 
@@ -254,8 +255,8 @@ namespace PSMinIO.Cmdlets
                 var basePath = Directory.FullName;
                 allFiles = allFiles.Where(f =>
                 {
-                    var relativePath = Path.GetRelativePath(basePath, f.FullName);
-                    var depth = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Length - 1;
+                    var relativePath = f.FullName.Substring(basePath.Length).TrimStart('\\', '/');
+                    var depth = relativePath.Split(new char[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries).Length - 1;
                     return depth <= MaxDepth;
                 }).ToArray();
             }
@@ -285,7 +286,7 @@ namespace PSMinIO.Cmdlets
         {
             try
             {
-                var result = filter.InvokeWithContext(null, new[] { new PSVariable("_", file) });
+                var result = filter.InvokeWithContext(null, new List<PSVariable> { new PSVariable("_", file) });
                 return result.Count > 0 && LanguagePrimitives.IsTrue(result[0]);
             }
             catch (Exception ex)
@@ -317,7 +318,7 @@ namespace PSMinIO.Cmdlets
             }
 
             MinIOLogger.WriteVerbose(this, "Starting chunked upload of {0} files to bucket '{1}' (ChunkSize: {2})",
-                validFiles.Length, BucketName, SizeFormatter.FormatSize(ChunkSize));
+                validFiles.Length, BucketName, SizeFormatter.FormatBytes(ChunkSize));
 
             // Calculate total size for overall progress
             var totalSize = validFiles.Sum(f => f.Length);
@@ -453,6 +454,7 @@ namespace PSMinIO.Cmdlets
                     return result;
                 }
             }
+#pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in throw
             catch (Exception ex)
             {
                 // Save resume data on failure if resume is enabled
@@ -471,6 +473,7 @@ namespace PSMinIO.Cmdlets
 
                 throw;
             }
+#pragma warning restore CS0168
 
             return null;
         }
@@ -488,7 +491,7 @@ namespace PSMinIO.Cmdlets
                 var objectName = file.Name;
                 if (!string.IsNullOrWhiteSpace(BucketDirectory))
                 {
-                    var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory);
+                    var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
                     objectName = $"{sanitizedDirectory}/{file.Name}";
                 }
                 return objectName;
@@ -503,7 +506,7 @@ namespace PSMinIO.Cmdlets
                 else
                 {
                     // Maintain directory structure relative to the base directory
-                    var relativePath = Path.GetRelativePath(Directory!.FullName, file.FullName);
+                    var relativePath = file.FullName.Substring(Directory!.FullName.Length).TrimStart('\\', '/');
                     return relativePath.Replace('\\', '/'); // Ensure forward slashes for object storage
                 }
             }

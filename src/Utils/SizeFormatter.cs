@@ -150,7 +150,7 @@ namespace PSMinIO.Utils
             if (string.IsNullOrWhiteSpace(sizeString))
                 throw new ArgumentException("Size string cannot be null or empty");
 
-            var parts = sizeString.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var parts = sizeString.Trim().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length != 2)
                 throw new ArgumentException($"Invalid size string format: {sizeString}. Expected format: '1.5 GB'");
 

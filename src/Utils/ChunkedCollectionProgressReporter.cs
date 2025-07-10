@@ -75,8 +75,8 @@ namespace PSMinIO.Utils
             _totalChunks = totalChunks;
             _currentChunk = 0;
             
-            MinIOLogger.WriteVerbose(_cmdlet, "Starting {0} of file {1}/{2}: {3} ({4})", 
-                _operationName.ToLower(), _completedFiles + 1, _totalFiles, fileName, SizeFormatter.FormatSize(fileSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "Starting {0} of file {1}/{2}: {3} ({4})",
+                _operationName.ToLower(), _completedFiles + 1, _totalFiles, fileName, SizeFormatter.FormatBytes(fileSize));
             
             UpdateAllProgress();
         }
@@ -92,8 +92,8 @@ namespace PSMinIO.Utils
             _currentChunkSize = chunkSize;
             _currentChunkBytesTransferred = 0;
             
-            MinIOLogger.WriteVerbose(_cmdlet, "File {0}: Starting chunk {1}/{2} ({3})", 
-                _currentFileName, chunkNumber, _totalChunks, SizeFormatter.FormatSize(chunkSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "File {0}: Starting chunk {1}/{2} ({3})",
+                _currentFileName, chunkNumber, _totalChunks, SizeFormatter.FormatBytes(chunkSize));
             
             UpdateAllProgress();
         }
@@ -149,8 +149,8 @@ namespace PSMinIO.Utils
             _completedFiles++;
             
             var elapsed = DateTime.Now - _startTime;
-            MinIOLogger.WriteVerbose(_cmdlet, "File {0}: {1} completed in {2} - Total size: {3}", 
-                _currentFileName, _operationName.ToLower(), elapsed.ToString(@"hh\:mm\:ss"), SizeFormatter.FormatSize(_currentFileSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "File {0}: {1} completed in {2} - Total size: {3}",
+                _currentFileName, _operationName.ToLower(), elapsed.ToString(@"hh\:mm\:ss"), SizeFormatter.FormatBytes(_currentFileSize));
 
             // Mark file as completed (only if progress is enabled)
             if (_cmdlet.MyInvocation.BoundParameters.ContainsKey("ProgressAction") &&
@@ -175,8 +175,8 @@ namespace PSMinIO.Utils
         public void CompleteCollection()
         {
             var elapsed = DateTime.Now - _startTime;
-            MinIOLogger.WriteVerbose(_cmdlet, "Completed {0} {1} files ({2}) in {3}", 
-                _operationName.ToLower(), _totalFiles, SizeFormatter.FormatSize(_totalSize), elapsed.ToString(@"hh\:mm\:ss"));
+            MinIOLogger.WriteVerbose(_cmdlet, "Completed {0} {1} files ({2}) in {3}",
+                _operationName.ToLower(), _totalFiles, SizeFormatter.FormatBytes(_totalSize), elapsed.ToString(@"hh\:mm\:ss"));
 
             // Complete all progress records
             var collectionProgress = new ProgressRecord(CollectionActivityId, $"{_operationName} Files", "Completed")
@@ -217,8 +217,8 @@ namespace PSMinIO.Utils
             // Layer 1: Collection Progress (always shown)
             var collectionPercent = _totalSize > 0 ? (int)((_totalBytesTransferred * 100) / _totalSize) : 0;
             var collectionStatus = $"Files: {_completedFiles}/{_totalFiles} | " +
-                                  $"Size: {SizeFormatter.FormatSize(_totalBytesTransferred)}/{SizeFormatter.FormatSize(_totalSize)} | " +
-                                  $"Speed: {SizeFormatter.FormatSize((long)speed)}/s | " +
+                                  $"Size: {SizeFormatter.FormatBytes(_totalBytesTransferred)}/{SizeFormatter.FormatBytes(_totalSize)} | " +
+                                  $"Speed: {SizeFormatter.FormatBytes((long)speed)}/s | " +
                                   $"Elapsed: {elapsed:hh\\:mm\\:ss}";
 
             var collectionProgress = new ProgressRecord(CollectionActivityId, $"{_operationName} Files", collectionStatus)
@@ -237,7 +237,7 @@ namespace PSMinIO.Utils
             {
                 var filePercent = _currentFileSize > 0 ? (int)((_currentFileBytesTransferred * 100) / _currentFileSize) : 0;
                 var fileStatus = $"File: {_currentFileName} | " +
-                               $"Size: {SizeFormatter.FormatSize(_currentFileBytesTransferred)}/{SizeFormatter.FormatSize(_currentFileSize)}";
+                               $"Size: {SizeFormatter.FormatBytes(_currentFileBytesTransferred)}/{SizeFormatter.FormatBytes(_currentFileSize)}";
 
                 var fileProgress = new ProgressRecord(FileActivityId, "Current File", fileStatus)
                 {
@@ -252,8 +252,8 @@ namespace PSMinIO.Utils
             {
                 var chunkPercent = _currentChunkSize > 0 ? (int)((_currentChunkBytesTransferred * 100) / _currentChunkSize) : 0;
                 var chunkStatus = $"Chunk: {_currentChunk}/{_totalChunks} | " +
-                                $"Size: {SizeFormatter.FormatSize(_currentChunkBytesTransferred)}/{SizeFormatter.FormatSize(_currentChunkSize)} | " +
-                                $"Speed: {SizeFormatter.FormatSize((long)speed)}/s";
+                                $"Size: {SizeFormatter.FormatBytes(_currentChunkBytesTransferred)}/{SizeFormatter.FormatBytes(_currentChunkSize)} | " +
+                                $"Speed: {SizeFormatter.FormatBytes((long)speed)}/s";
 
                 var chunkProgress = new ProgressRecord(ChunkActivityId, "Current Chunk", chunkStatus)
                 {

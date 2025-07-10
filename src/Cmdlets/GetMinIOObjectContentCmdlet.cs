@@ -50,7 +50,7 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConfiguration();
+            ValidateConnection();
             ValidateBucketName(BucketName);
             ValidateObjectName(ObjectName);
             ValidateAndPrepareFilePath();
@@ -115,11 +115,13 @@ namespace PSMinIO.Cmdlets
                         FilePath.Refresh(); // Refresh to get updated file info
                         WriteObject(FilePath);
                     }
+#pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in throw
                     catch (Exception ex)
                     {
                         progressReporter.Complete();
                         throw;
                     }
+#pragma warning restore CS0168
 
                 }, $"Bucket: {BucketName}, Object: {ObjectName}, File: {FilePath.FullName}");
             }
@@ -140,7 +142,7 @@ namespace PSMinIO.Cmdlets
             }
 
             // Check if file already exists
-            if (FilePath.Exists && !Force.IsPresent)
+            if (FilePath!.Exists && !Force.IsPresent)
             {
                 WriteError(new ErrorRecord(
                     new InvalidOperationException($"File '{FilePath.FullName}' already exists. Use -Force to overwrite."),

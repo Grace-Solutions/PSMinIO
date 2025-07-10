@@ -116,11 +116,11 @@ namespace PSMinIO.Models
             var objectInfo = new MinIOObjectInfo
             {
                 Name = item.Key ?? string.Empty,
-                Size = (long)(item.Size ?? 0),
+                Size = (long)item.Size,
                 LastModified = item.LastModifiedDateTime ?? DateTime.MinValue,
                 ETag = item.ETag ?? string.Empty,
                 BucketName = bucketName ?? string.Empty,
-                StorageClass = item.StorageClass ?? string.Empty
+                StorageClass = string.Empty // StorageClass not available in MinIO 5.0.0 Item
             };
 
             // Try to extract version information if available
@@ -154,14 +154,8 @@ namespace PSMinIO.Models
                 // This ensures compatibility even if the SDK doesn't have these properties
             }
 
-            // Copy metadata if available
-            if (item.MetaData != null)
-            {
-                foreach (var kvp in item.MetaData)
-                {
-                    objectInfo.Metadata[kvp.Key] = kvp.Value;
-                }
-            }
+            // Metadata not available in MinIO 5.0.0 Item class
+            // objectInfo.Metadata remains empty
 
             return objectInfo;
         }

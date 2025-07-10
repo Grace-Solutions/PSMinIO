@@ -65,7 +65,7 @@ namespace PSMinIO.Models
             return new MinIOBucketInfo
             {
                 Name = bucket.Name ?? string.Empty,
-                Created = bucket.CreationDate,
+                Created = DateTime.TryParse(bucket.CreationDate, out var createdDate) ? createdDate : DateTime.MinValue,
                 Region = string.Empty // Region is not available in basic bucket info
             };
         }

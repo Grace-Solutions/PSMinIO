@@ -23,6 +23,10 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# Exception: Include Module directory for PowerShell module distribution
+!Module/
+!Module/**/
+
 # .NET Core
 project.lock.json
 project.fragment.lock.json

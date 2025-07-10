@@ -38,7 +38,7 @@ namespace PSMinIO.Cmdlets
             if (!string.IsNullOrWhiteSpace(BucketName))
             {
                 // Get specific bucket
-                GetSpecificBucket(BucketName);
+                GetSpecificBucket(BucketName!);
             }
             else
             {

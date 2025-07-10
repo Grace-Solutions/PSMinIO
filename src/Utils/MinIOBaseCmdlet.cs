@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Management.Automation;
 using PSMinIO.Models;
 
@@ -45,7 +46,7 @@ namespace PSMinIO.Utils
                             null));
                     }
 
-                    if (!_connection.IsValid)
+                    if (!_connection!.IsValid)
                     {
                         ThrowTerminatingError(new ErrorRecord(
                             new InvalidOperationException($"MinIO connection is not valid. Status: {_connection.Status}"),
@@ -187,8 +188,8 @@ namespace PSMinIO.Utils
         {
             return exception switch
             {
-                ArgumentException => ErrorCategory.InvalidArgument,
                 ArgumentNullException => ErrorCategory.InvalidArgument,
+                ArgumentException => ErrorCategory.InvalidArgument,
                 UnauthorizedAccessException => ErrorCategory.PermissionDenied,
                 System.Net.WebException => ErrorCategory.ConnectionError,
                 System.Net.Http.HttpRequestException => ErrorCategory.ConnectionError,

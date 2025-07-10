@@ -65,8 +65,8 @@ namespace PSMinIO.Utils
             _currentChunkSize = chunkSize;
             _currentChunkBytesTransferred = 0;
             
-            MinIOLogger.WriteVerbose(_cmdlet, "Starting chunk {0}/{1} ({2})", 
-                chunkNumber, _totalChunks, SizeFormatter.FormatSize(chunkSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "Starting chunk {0}/{1} ({2})",
+                chunkNumber, _totalChunks, SizeFormatter.FormatBytes(chunkSize));
             
             UpdateAllProgress();
         }
@@ -119,8 +119,8 @@ namespace PSMinIO.Utils
         public void CompleteDownload()
         {
             var elapsed = DateTime.Now - _startTime;
-            MinIOLogger.WriteVerbose(_cmdlet, "Completed {0} ({1}) in {2}", 
-                _operationName.ToLower(), SizeFormatter.FormatSize(_totalSize), elapsed.ToString(@"hh\:mm\:ss"));
+            MinIOLogger.WriteVerbose(_cmdlet, "Completed {0} ({1}) in {2}",
+                _operationName.ToLower(), SizeFormatter.FormatBytes(_totalSize), elapsed.ToString(@"hh\:mm\:ss"));
 
             // Complete all progress records
             var fileProgress = new ProgressRecord(FileActivityId, $"{_operationName} File", "Completed")
@@ -160,8 +160,8 @@ namespace PSMinIO.Utils
 
             // Layer 1: File Progress (always shown)
             var filePercent = _totalSize > 0 ? (int)((_totalBytesTransferred * 100) / _totalSize) : 0;
-            var fileStatus = $"Size: {SizeFormatter.FormatSize(_totalBytesTransferred)}/{SizeFormatter.FormatSize(_totalSize)} | " +
-                           $"Speed: {SizeFormatter.FormatSize((long)speed)}/s | " +
+            var fileStatus = $"Size: {SizeFormatter.FormatBytes(_totalBytesTransferred)}/{SizeFormatter.FormatBytes(_totalSize)} | " +
+                           $"Speed: {SizeFormatter.FormatBytes((long)speed)}/s | " +
                            $"Elapsed: {elapsed:hh\\:mm\\:ss}";
 
             var fileProgress = new ProgressRecord(FileActivityId, $"{_operationName} File", fileStatus)
@@ -180,8 +180,8 @@ namespace PSMinIO.Utils
             {
                 var chunkPercent = _currentChunkSize > 0 ? (int)((_currentChunkBytesTransferred * 100) / _currentChunkSize) : 0;
                 var chunkStatus = $"Chunk: {_currentChunk}/{_totalChunks} | " +
-                                $"Size: {SizeFormatter.FormatSize(_currentChunkBytesTransferred)}/{SizeFormatter.FormatSize(_currentChunkSize)} | " +
-                                $"Speed: {SizeFormatter.FormatSize((long)speed)}/s";
+                                $"Size: {SizeFormatter.FormatBytes(_currentChunkBytesTransferred)}/{SizeFormatter.FormatBytes(_currentChunkSize)} | " +
+                                $"Speed: {SizeFormatter.FormatBytes((long)speed)}/s";
 
                 var chunkProgress = new ProgressRecord(ChunkActivityId, "Current Chunk", chunkStatus)
                 {
