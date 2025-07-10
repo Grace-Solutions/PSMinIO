@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>PSMinIO</AssemblyName>
+    <RootNamespace>PSMinIO</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>PSMinIO PowerShell Module</AssemblyTitle>
+    <AssemblyDescription>A PowerShell module for MinIO object storage operations</AssemblyDescription>
+    <AssemblyCompany>PSMinIO</AssemblyCompany>
+    <AssemblyProduct>PSMinIO</AssemblyProduct>
+    <AssemblyCopyright>Copyright © 2025</AssemblyCopyright>
+    <AssemblyVersion>2025.07.10.1200</AssemblyVersion>
+    <FileVersion>2025.07.10.1200</FileVersion>
+    <InformationalVersion>2025.07.10.1200</InformationalVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <WarningsNotAsErrors />
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants>TRACE</DefineConstants>
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Minio" Version="5.0.0" />
+    <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" />
+    <PackageReference Include="System.Text.Json" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PSMinIO.psd1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Module\PSMinIO\types\*.ps1xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyModuleFiles" AfterTargets="Build">
+    <ItemGroup>
+      <ModuleFiles Include="$(OutputPath)\PSMinIO.dll" />
+      <ModuleFiles Include="$(OutputPath)\PSMinIO.pdb" />
+      <ModuleFiles Include="$(OutputPath)\Minio.dll" />
+      <ModuleFiles Include="$(OutputPath)\System.Text.Json.dll" />
+      <ModuleFiles Include="PSMinIO.psd1" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModuleFiles)" DestinationFolder="Module\PSMinIO\bin\" />
+  </Target>
+
+</Project>
