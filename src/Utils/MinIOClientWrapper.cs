@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
+using Minio.DataModel.Response;
 using PSMinIO.Models;
 using PSMinIO.Utils;
 

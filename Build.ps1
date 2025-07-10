@@ -36,7 +36,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     
-    [string]$OutputPath = 'Module\PSMinIO',
+    [string]$OutputPath = 'Artifacts\PSMinIO',
     
     [switch]$Clean,
     
@@ -221,7 +221,7 @@ try {
         Write-Status "Creating package..."
         
         $timestamp = Get-Date -Format 'yyyy.MM.dd.HHmm'
-        $packageDir = Join-Path 'Releases' $timestamp
+        $packageDir = Join-Path 'Artifacts' "Release-$timestamp"
         
         if (!(Test-Path $packageDir)) {
             New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
