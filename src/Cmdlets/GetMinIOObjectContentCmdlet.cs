@@ -175,7 +175,10 @@ namespace PSMinIO.Cmdlets
             try
             {
                 var testFile = Path.Combine(FilePath.DirectoryName ?? ".", $".psminiotest_{Guid.NewGuid():N}");
-                File.WriteAllText(testFile, "test");
+                using (var testStream = File.Create(testFile))
+                {
+                    testStream.WriteByte(0);
+                }
                 File.Delete(testFile);
             }
             catch (Exception ex)

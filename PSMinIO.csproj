@@ -35,7 +35,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Minio" Version="5.0.0" />
+    <PackageReference Include="Minio" Version="4.0.7" />
     <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>

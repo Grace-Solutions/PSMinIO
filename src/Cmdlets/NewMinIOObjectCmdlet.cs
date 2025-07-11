@@ -36,7 +36,7 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         [Parameter(ParameterSetName = "Files")]
         [ValidateNotNullOrEmpty]
-        [Alias("Folder", "Prefix")]
+        [Alias("Prefix")]
         public string? BucketDirectory { get; set; }
 
         /// <summary>
@@ -44,7 +44,7 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         [Parameter(Position = 1, Mandatory = true, ValueFromPipelineByPropertyName = true, ParameterSetName = "Directory")]
         [ValidateNotNull]
-        [Alias("Dir", "Folder")]
+        [Alias("Dir")]
         public DirectoryInfo? Directory { get; set; }
 
         /// <summary>

@@ -57,29 +57,17 @@ namespace PSMinIO.Cmdlets
         public SwitchParameter TestConnection { get; set; }
 
         /// <summary>
-        /// Store the connection in a session variable for reuse
+        /// Store the connection in a session variable for reuse (default: MinIOConnection)
         /// </summary>
         [Parameter]
         [ValidateNotNullOrEmpty]
-        public string? SessionVariable { get; set; }
+        public string SessionVariable { get; set; } = "MinIOConnection";
 
         /// <summary>
         /// Skip SSL certificate validation (use with caution)
         /// </summary>
         [Parameter]
         public SwitchParameter SkipCertificateValidation { get; set; }
-
-        /// <summary>
-        /// Accept self-signed certificates
-        /// </summary>
-        [Parameter]
-        public SwitchParameter AcceptSelfSignedCertificates { get; set; }
-
-        /// <summary>
-        /// Accept certificates with hostname mismatches
-        /// </summary>
-        [Parameter]
-        public SwitchParameter AcceptHostnameMismatch { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
@@ -147,6 +135,7 @@ namespace PSMinIO.Cmdlets
                     // Store in session variable if requested
                     if (!string.IsNullOrWhiteSpace(SessionVariable))
                     {
+                        // Set variable in session state
                         SessionState.PSVariable.Set(SessionVariable, connection);
                         MinIOLogger.WriteVerbose(this, "Connection stored in session variable: {0}", SessionVariable!);
                     }

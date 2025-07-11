@@ -237,7 +237,13 @@ namespace PSMinIO.Models
         /// </summary>
         public override int GetHashCode()
         {
-            return HashCode.Combine(Name, BucketName?.ToLowerInvariant());
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + (Name?.GetHashCode() ?? 0);
+                hash = hash * 23 + (BucketName?.ToLowerInvariant()?.GetHashCode() ?? 0);
+                return hash;
+            }
         }
     }
 }

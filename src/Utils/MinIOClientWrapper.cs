@@ -383,19 +383,23 @@ namespace PSMinIO.Utils
                     contentType = GetContentType(filePath);
                 }
 
+                // Use explicit file stream management to ensure proper handle release
+                using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
                 var args = new PutObjectArgs()
                     .WithBucket(bucketName)
                     .WithObject(objectName)
-                    .WithFileName(filePath)
+                    .WithStreamData(fileStream)
+                    .WithObjectSize(fileSize)
                     .WithContentType(contentType);
 
-                // Progress tracking not available in MinIO 5.0.0
+                // Progress tracking not available in MinIO 4.0.7
                 // progressCallback is ignored for now
 
-                var result = Task.Run(async () =>
+                Task.Run(async () =>
                     await _client.PutObjectAsync(args, CancellationToken)).GetAwaiter().GetResult();
 
-                return result.Etag ?? string.Empty;
+                return string.Empty; // MinIO 4.0.7 PutObjectAsync returns void
             }
             catch (Exception ex)
             {
@@ -481,10 +485,10 @@ namespace PSMinIO.Utils
                 // Progress tracking not available in MinIO 5.0.0
                 // progressCallback is ignored for now
 
-                var result = Task.Run(async () =>
+                Task.Run(async () =>
                     await _client.PutObjectAsync(args, CancellationToken)).GetAwaiter().GetResult();
 
-                return result.Etag ?? string.Empty;
+                return string.Empty; // MinIO 4.0.7 PutObjectAsync returns void
             }
             catch (Exception ex)
             {

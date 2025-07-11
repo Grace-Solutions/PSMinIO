@@ -178,13 +178,12 @@ namespace PSMinIO.Utils
         private static string FormatLogMessage(LogLevel level, string message, params object[] args)
         {
             var timestamp = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss.fff");
-            var levelString = level.ToString().ToUpperInvariant();
 
             // Process arguments to format byte sizes intelligently
             var processedArgs = ProcessLogArguments(args);
             var formattedMessage = processedArgs.Length > 0 ? string.Format(message, processedArgs) : message;
 
-            return $"{timestamp} - [{levelString}] - {formattedMessage}";
+            return $"{timestamp} - {formattedMessage}";
         }
 
         /// <summary>
