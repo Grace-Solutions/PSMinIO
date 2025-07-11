@@ -73,14 +73,22 @@ namespace PSMinIO.Core.Http
             Action<long>? progressCallback = null)
         {
             var request = CreateRequest(method, path, queryParameters, headers, content);
-            
+
             // Sign the request with AWS S3 signature
             SignRequest(request);
 
-            // Execute the request synchronously
-            var response = _httpClient.SendAsync(request).GetAwaiter().GetResult();
-            
-            return response;
+            try
+            {
+                // Execute the request synchronously
+                var response = _httpClient.SendAsync(request).GetAwaiter().GetResult();
+                return response;
+            }
+            catch (Exception ex)
+            {
+                // Add more detailed error information
+                var innerMessage = ex.InnerException?.Message ?? "No inner exception";
+                throw new InvalidOperationException($"HTTP request failed: {ex.Message}. Inner: {innerMessage}. URL: {request.RequestUri}", ex);
+            }
         }
 
         /// <summary>

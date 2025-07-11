@@ -3,7 +3,7 @@
     RootModule = 'bin\PSMinIO.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.07.11.1421'
+    ModuleVersion = '2025.07.11.1453'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -110,7 +110,7 @@
 
             # ReleaseNotes of this module
             ReleaseNotes = @'
-## Version 2025.07.11.1421 - Enhanced Release
+## Version 2025.07.11.1453 - Enhanced Release
 
 ### Major Features
 - Complete Get-MinIOObject cmdlet with advanced filtering, sorting, and pagination
@@ -156,6 +156,7 @@ This release provides enterprise-grade functionality with professional documenta
     # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
     # DefaultCommandPrefix = ''
 }
+
 
 
 

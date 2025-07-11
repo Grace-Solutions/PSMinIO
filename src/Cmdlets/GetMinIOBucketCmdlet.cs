@@ -17,8 +17,8 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         [Parameter(Position = 0, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
         [SupportsWildcards]
-        [Alias("Bucket")]
-        public string? Name { get; set; }
+        [Alias("Bucket", "Name")]
+        public string? BucketName { get; set; }
 
         /// <summary>
         /// Include bucket statistics (object count and total size)
@@ -60,11 +60,11 @@ namespace PSMinIO.Cmdlets
                 WriteVerboseMessage("Retrieved {0} buckets", buckets.Count);
 
                 // Filter by name if specified
-                if (!string.IsNullOrEmpty(Name))
+                if (!string.IsNullOrEmpty(BucketName))
                 {
-                    var wildcardPattern = new WildcardPattern(Name, WildcardOptions.IgnoreCase);
+                    var wildcardPattern = new WildcardPattern(BucketName, WildcardOptions.IgnoreCase);
                     buckets = buckets.Where(b => b.Name != null && wildcardPattern.IsMatch(b.Name)).ToList();
-                    WriteVerboseMessage("Filtered to {0} buckets matching pattern '{1}'", buckets.Count, Name);
+                    WriteVerboseMessage("Filtered to {0} buckets matching pattern '{1}'", buckets.Count, BucketName);
                 }
 
                 // Enhance bucket information if requested

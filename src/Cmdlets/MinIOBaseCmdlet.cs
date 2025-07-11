@@ -115,11 +115,9 @@ namespace PSMinIO.Cmdlets
             catch (Exception ex)
             {
                 MinIOLogger.LogOperationFailure(this, operationName, ex, details);
-                
-                // Determine appropriate error category
-                var category = GetErrorCategory(ex);
-                
-                ThrowTerminatingError(new ErrorRecord(ex, $"{operationName}Failed", category, null));
+
+                // Use centralized enhanced error handling
+                MinIOErrorHandler.HandleError(this, ex, operationName, details);
             }
         }
 
@@ -146,12 +144,10 @@ namespace PSMinIO.Cmdlets
             catch (Exception ex)
             {
                 MinIOLogger.LogOperationFailure(this, operationName, ex, details);
-                
-                // Determine appropriate error category
-                var category = GetErrorCategory(ex);
-                
-                ThrowTerminatingError(new ErrorRecord(ex, $"{operationName}Failed", category, null));
-                
+
+                // Use centralized enhanced error handling
+                MinIOErrorHandler.HandleError(this, ex, operationName, details);
+
                 // This line will never be reached, but is required for compilation
                 throw;
             }

@@ -14,26 +14,26 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         [Parameter(Position = 0, Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
         [ValidateNotNullOrEmpty]
-        [Alias("Bucket")]
-        public string Name { get; set; } = string.Empty;
+        [Alias("Bucket", "Name")]
+        public string BucketName { get; set; } = string.Empty;
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateBucketName(Name);
+            ValidateBucketName(BucketName);
 
             var exists = ExecuteOperation("CheckBucketExists", () =>
             {
-                WriteVerboseMessage("Checking if bucket '{0}' exists", Name);
+                WriteVerboseMessage("Checking if bucket '{0}' exists", BucketName);
 
-                var bucketExists = S3Client.BucketExists(Name);
-                
-                WriteVerboseMessage("Bucket '{0}' {1}", Name, bucketExists ? "exists" : "does not exist");
-                
+                var bucketExists = S3Client.BucketExists(BucketName);
+
+                WriteVerboseMessage("Bucket '{0}' {1}", BucketName, bucketExists ? "exists" : "does not exist");
+
                 return bucketExists;
-            }, $"Bucket: {Name}");
+            }, $"Bucket: {BucketName}");
 
             WriteObject(exists);
         }
