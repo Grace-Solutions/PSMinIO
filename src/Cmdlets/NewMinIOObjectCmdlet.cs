@@ -302,7 +302,7 @@ namespace PSMinIO.Cmdlets
         }
 
         /// <summary>
-        /// Uploads a collection of files
+        /// Uploads a collection of files with multi-layer progress tracking
         /// </summary>
         /// <param name="files">Files to upload</param>
         private void UploadFileCollection(FileInfo[] files)
@@ -324,37 +324,47 @@ namespace PSMinIO.Cmdlets
 
             WriteVerboseMessage("Uploading {0} files to bucket '{1}'", validFiles.Length, BucketName);
 
-            // Calculate total size for overall progress
-            var totalSize = validFiles.Sum(f => f.Length);
-            var totalProcessed = 0L;
-
+            // Create multi-layer progress reporter
+            var progressReporter = new MultiLayerProgressReporter(this, validFiles.Length, "Uploading Files");
             var uploadedObjects = new List<MinIOUploadResult>();
 
-            for (int i = 0; i < validFiles.Length; i++)
+            try
             {
-                var fileInfo = validFiles[i];
-                var objectName = GetObjectName(fileInfo);
-
-                try
+                for (int i = 0; i < validFiles.Length; i++)
                 {
-                    WriteVerboseMessage("Uploading file {0}/{1}: {2} -> {3}",
-                        i + 1, validFiles.Length, fileInfo.Name, objectName);
+                    var fileInfo = validFiles[i];
+                    var objectName = GetObjectName(fileInfo);
 
-                    var uploadResult = UploadSingleFile(fileInfo, objectName);
-                    if (uploadResult != null)
+                    try
                     {
-                        uploadedObjects.Add(uploadResult);
-                        totalProcessed += fileInfo.Length;
+                        // Start new file in progress reporter
+                        progressReporter.StartNewFile(fileInfo.Name, fileInfo.Length);
+                        progressReporter.QueueVerboseMessage("Uploading file {0}/{1}: {2} -> {3}",
+                            i + 1, validFiles.Length, fileInfo.Name, objectName);
+
+                        var uploadResult = UploadSingleFileWithProgress(fileInfo, objectName, progressReporter);
+                        if (uploadResult != null)
+                        {
+                            uploadedObjects.Add(uploadResult);
+                            progressReporter.CompleteCurrentFile();
+                            progressReporter.QueueVerboseMessage("Successfully uploaded: {0}", fileInfo.Name);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var errorRecord = new ErrorRecord(ex, "FileUploadFailed", ErrorCategory.WriteError, fileInfo);
+                        WriteError(errorRecord);
+                        progressReporter.QueueVerboseMessage("Failed to upload {0}: {1}", fileInfo.Name, ex.Message);
                     }
 
-                    WriteVerboseMessage("Successfully uploaded: {0}", fileInfo.Name);
+                    // Process queued progress updates
+                    progressReporter.ProcessQueuedUpdates();
                 }
-                catch (Exception ex)
-                {
-                    var errorRecord = new ErrorRecord(ex, "FileUploadFailed", ErrorCategory.WriteError, fileInfo);
-                    WriteError(errorRecord);
-                    WriteVerboseMessage("Failed to upload {0}: {1}", fileInfo.Name, ex.Message);
-                }
+            }
+            finally
+            {
+                // Complete all progress reporting
+                progressReporter.Complete();
             }
 
             // Always return uploaded objects if PassThru is specified
@@ -501,7 +511,73 @@ namespace PSMinIO.Cmdlets
         }
 
         /// <summary>
-        /// Uploads a single file and returns the result
+        /// Uploads a single file with progress tracking and returns the result
+        /// </summary>
+        /// <param name="fileInfo">File to upload</param>
+        /// <param name="objectName">Object name in bucket</param>
+        /// <param name="progressReporter">Multi-layer progress reporter</param>
+        /// <returns>Upload result</returns>
+        private MinIOUploadResult? UploadSingleFileWithProgress(FileInfo fileInfo, string objectName, MultiLayerProgressReporter progressReporter)
+        {
+            // Create upload result
+            var uploadResult = new MinIOUploadResult(BucketName, objectName, string.Empty, fileInfo.Length)
+            {
+                SourceFilePath = fileInfo.FullName
+            };
+            uploadResult.MarkStarted();
+
+            try
+            {
+                // Determine content type
+                var fileContentType = ContentType ?? GetContentType(fileInfo.Extension);
+                uploadResult.ContentType = fileContentType;
+
+                // Convert metadata
+                Dictionary<string, string>? metadata = null;
+                if (Metadata != null && Metadata.Count > 0)
+                {
+                    metadata = new Dictionary<string, string>();
+                    foreach (var key in Metadata.Keys)
+                    {
+                        if (key != null && Metadata[key] != null)
+                        {
+                            metadata[key.ToString()!] = Metadata[key]!.ToString()!;
+                        }
+                    }
+                }
+
+                // Upload the file with progress tracking
+                string etag;
+                using (var fileStream = fileInfo.OpenRead())
+                {
+                    etag = S3Client.PutObject(
+                        BucketName,
+                        objectName,
+                        fileStream,
+                        fileContentType,
+                        metadata,
+                        bytesTransferred =>
+                        {
+                            // Update progress reporter from background thread
+                            progressReporter.UpdateTransferProgress(bytesTransferred);
+                            uploadResult.BytesTransferred = bytesTransferred;
+                        });
+                }
+
+                uploadResult.ETag = etag;
+                uploadResult.MarkCompleted();
+
+                return uploadResult;
+            }
+            catch (Exception ex)
+            {
+                uploadResult.MarkFailed(ex.Message);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Uploads a single file and returns the result (legacy method for backward compatibility)
         /// </summary>
         /// <param name="fileInfo">File to upload</param>
         /// <param name="objectName">Object name in bucket</param>
