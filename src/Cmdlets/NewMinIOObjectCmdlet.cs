@@ -9,32 +9,88 @@ using PSMinIO.Utils;
 namespace PSMinIO.Cmdlets
 {
     /// <summary>
-    /// Uploads objects to MinIO
+    /// Uploads files or directories to a MinIO bucket
     /// </summary>
     [Cmdlet(VerbsCommon.New, "MinIOObject", SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Medium)]
     [OutputType(typeof(MinIOUploadResult))]
     public class NewMinIOObjectCmdlet : MinIOBaseCmdlet
     {
         /// <summary>
-        /// Name of the bucket
+        /// Name of the bucket to upload to
         /// </summary>
-        [Parameter(Position = 0, Mandatory = true)]
+        [Parameter(Position = 0, Mandatory = true, ValueFromPipelineByPropertyName = true)]
         [ValidateNotNullOrEmpty]
+        [Alias("Bucket")]
         public string BucketName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Name of the object (if not specified, uses filename)
+        /// Single file to upload
         /// </summary>
-        [Parameter(Position = 1)]
+        [Parameter(Position = 1, Mandatory = true, ValueFromPipeline = true, ParameterSetName = "SingleFile")]
+        [ValidateNotNull]
+        public FileInfo? File { get; set; }
+
+        /// <summary>
+        /// Array of FileInfo objects to upload
+        /// </summary>
+        [Parameter(Position = 1, Mandatory = true, ValueFromPipeline = true, ParameterSetName = "Files")]
+        [ValidateNotNull]
+        [Alias("Files")]
+        public FileInfo[]? Path { get; set; }
+
+        /// <summary>
+        /// Directory to upload
+        /// </summary>
+        [Parameter(Position = 1, Mandatory = true, ValueFromPipelineByPropertyName = true, ParameterSetName = "Directory")]
+        [ValidateNotNull]
+        [Alias("Dir")]
+        public DirectoryInfo? Directory { get; set; }
+
+        /// <summary>
+        /// Object name in the bucket (defaults to filename) - SingleFile parameter set only
+        /// </summary>
+        [Parameter(Position = 2, ParameterSetName = "SingleFile")]
         [ValidateNotNullOrEmpty]
         public string? ObjectName { get; set; }
 
         /// <summary>
-        /// File to upload
+        /// Optional bucket directory path where files should be uploaded (Files parameter set only)
         /// </summary>
-        [Parameter(Position = 2, Mandatory = true, ValueFromPipeline = true)]
-        [ValidateNotNull]
-        public FileInfo File { get; set; } = null!;
+        [Parameter(ParameterSetName = "Files")]
+        [ValidateNotNullOrEmpty]
+        [Alias("Prefix", "Folder")]
+        public string? BucketDirectory { get; set; }
+
+        /// <summary>
+        /// Upload directory contents recursively (Directory parameter set only)
+        /// </summary>
+        [Parameter(ParameterSetName = "Directory")]
+        public SwitchParameter Recursive { get; set; }
+
+        /// <summary>
+        /// Maximum depth for recursive directory upload (0 = unlimited)
+        /// </summary>
+        [Parameter(ParameterSetName = "Directory")]
+        [ValidateRange(0, int.MaxValue)]
+        public int MaxDepth { get; set; } = 0;
+
+        /// <summary>
+        /// Flatten directory structure (upload all files to bucket root)
+        /// </summary>
+        [Parameter(ParameterSetName = "Directory")]
+        public SwitchParameter Flatten { get; set; }
+
+        /// <summary>
+        /// Script block to filter files for inclusion
+        /// </summary>
+        [Parameter(ParameterSetName = "Directory")]
+        public ScriptBlock? InclusionFilter { get; set; }
+
+        /// <summary>
+        /// Script block to filter files for exclusion
+        /// </summary>
+        [Parameter(ParameterSetName = "Directory")]
+        public ScriptBlock? ExclusionFilter { get; set; }
 
         /// <summary>
         /// Content type of the file (auto-detected if not specified)
@@ -50,12 +106,10 @@ namespace PSMinIO.Cmdlets
         public Hashtable? Metadata { get; set; }
 
         /// <summary>
-        /// Directory prefix in the bucket (creates nested structure)
+        /// Overwrite existing objects without prompting
         /// </summary>
         [Parameter]
-        [ValidateNotNullOrEmpty]
-        [Alias("Folder", "Directory")]
-        public string? BucketDirectory { get; set; }
+        public SwitchParameter Force { get; set; }
 
         /// <summary>
         /// Force overwrite if object already exists
@@ -76,134 +130,19 @@ namespace PSMinIO.Cmdlets
         {
             ValidateBucketName(BucketName);
 
-            // Validate file exists
-            if (!File.Exists)
+            switch (ParameterSetName)
             {
-                var errorRecord = new ErrorRecord(
-                    new FileNotFoundException($"File not found: {File.FullName}"),
-                    "FileNotFound",
-                    ErrorCategory.ObjectNotFound,
-                    File);
-                ThrowTerminatingError(errorRecord);
-            }
-
-            // Determine object name
-            var finalObjectName = ObjectName ?? File?.Name ?? "unknown";
-            
-            // Add bucket directory prefix if specified
-            if (!string.IsNullOrEmpty(BucketDirectory))
-            {
-                var cleanDirectory = BucketDirectory.Trim('/');
-                if (!string.IsNullOrEmpty(cleanDirectory))
-                {
-                    finalObjectName = $"{cleanDirectory}/{finalObjectName}";
-                }
-            }
-
-            ValidateObjectName(finalObjectName);
-
-            if (ShouldProcess($"{BucketName}/{finalObjectName}", "Upload file"))
-            {
-                var result = ExecuteOperation("UploadObject", () =>
-                {
-                    WriteVerboseMessage("Uploading file '{0}' to bucket '{1}' as object '{2}'",
-                        File.FullName, BucketName, finalObjectName);
-
-                    // Create upload result
-                    var uploadResult = new MinIOUploadResult(BucketName, finalObjectName, string.Empty, File.Length)
-                    {
-                        SourceFilePath = File.FullName
-                    };
-                    uploadResult.MarkStarted();
-
-                    try
-                    {
-                        // Check if bucket exists
-                        if (!S3Client.BucketExists(BucketName))
-                        {
-                            throw new InvalidOperationException($"Bucket '{BucketName}' does not exist");
-                        }
-
-                        // Determine content type
-                        var fileContentType = ContentType ?? GetContentType(File.Extension);
-                        uploadResult.ContentType = fileContentType;
-                        WriteVerboseMessage("Using content type: {0}", fileContentType);
-
-                        // Convert metadata
-                        Dictionary<string, string>? metadata = null;
-                        if (Metadata != null && Metadata.Count > 0)
-                        {
-                            metadata = new Dictionary<string, string>();
-                            foreach (var key in Metadata.Keys)
-                            {
-                                if (key != null && Metadata[key] != null)
-                                {
-                                    metadata[key.ToString()!] = Metadata[key]!.ToString()!;
-                                }
-                            }
-                            WriteVerboseMessage("Added {0} metadata entries", metadata.Count);
-                        }
-
-                        // Track progress
-                        var fileSize = File.Length;
-                        var startTime = DateTime.UtcNow;
-
-                        WriteVerboseMessage("Starting upload of {0}", SizeFormatter.FormatBytes(fileSize));
-
-                        // Upload the file
-                        string etag;
-                        using (var fileStream = File.OpenRead())
-                        {
-                            etag = S3Client.PutObject(
-                                BucketName,
-                                finalObjectName,
-                                fileStream,
-                                fileContentType,
-                                metadata,
-                                bytesTransferred =>
-                                {
-                                    // Only update the result object - no PowerShell calls from background thread
-                                    uploadResult.BytesTransferred = bytesTransferred;
-                                });
-                        }
-
-                        uploadResult.ETag = etag;
-                        uploadResult.MarkCompleted();
-
-                        var duration = uploadResult.Duration ?? TimeSpan.Zero;
-                        var averageSpeed = uploadResult.AverageSpeed ?? 0;
-
-                        // Report final progress from main thread
-                        var percentage = fileSize > 0 ? (double)uploadResult.BytesTransferred / fileSize * 100 : 100;
-                        WriteVerboseMessage("Upload progress: {0:F1}% ({1}/{2}) at {3}",
-                            percentage,
-                            SizeFormatter.FormatBytes(uploadResult.BytesTransferred),
-                            SizeFormatter.FormatBytes(fileSize),
-                            SizeFormatter.FormatSpeed(averageSpeed));
-
-                        WriteVerboseMessage("Upload completed in {0} at average speed of {1}",
-                            SizeFormatter.FormatDuration(duration),
-                            SizeFormatter.FormatSpeed(averageSpeed));
-
-                        return uploadResult;
-                    }
-                    catch (Exception ex)
-                    {
-                        uploadResult.MarkFailed(ex.Message);
-                        throw;
-                    }
-
-                }, $"File: {File.FullName}, Bucket: {BucketName}, Object: {finalObjectName}");
-
-                // Return result if requested
-                if (PassThru.IsPresent)
-                {
-                    WriteObject(result);
-                }
-                else
-                {
-                    WriteVerboseMessage("Successfully uploaded object '{0}' to bucket '{1}'", finalObjectName, BucketName);
-                }
+                case "SingleFile":
+                    ProcessSingleFile();
+                    break;
+                case "Files":
+                    ProcessFiles();
+                    break;
+                case "Directory":
+                    ProcessDirectory();
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown parameter set: {ParameterSetName}");
             }
         }
 

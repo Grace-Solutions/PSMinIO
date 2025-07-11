@@ -97,40 +97,19 @@ namespace PSMinIO.Utils
         private static OrderedDictionary CreateDetailedErrorInfo(Exception exception, string operationName, string? operationDetails)
         {
             var errorDetails = new OrderedDictionary();
-            
+
             // Basic error information
             errorDetails.Add("Operation", operationName);
             errorDetails.Add("Message", exception.Message);
             errorDetails.Add("ExceptionType", exception.GetType().FullName);
-            
-            // Operation details if provided
-            if (!string.IsNullOrEmpty(operationDetails))
-            {
-                errorDetails.Add("OperationDetails", operationDetails);
-            }
-            
+
             // Inner exception information
             if (exception.InnerException != null)
             {
                 errorDetails.Add("InnerExceptionType", exception.InnerException.GetType().FullName);
                 errorDetails.Add("InnerExceptionMessage", exception.InnerException.Message);
             }
-            
-            // Stack trace information
-            if (!string.IsNullOrEmpty(exception.StackTrace))
-            {
-                var stackLines = exception.StackTrace.Split('\n');
-                if (stackLines.Length > 0)
-                {
-                    errorDetails.Add("StackTraceTop", stackLines[0].Trim());
-                }
-            }
-            
-            // System information
-            errorDetails.Add("Timestamp", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC"));
-            errorDetails.Add("MachineName", Environment.MachineName);
-            errorDetails.Add("ProcessId", Process.GetCurrentProcess().Id);
-            
+
             return errorDetails;
         }
 
@@ -144,10 +123,7 @@ namespace PSMinIO.Utils
             {
                 var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
 
-                // Log header
-                cmdlet.WriteWarning($"{timestamp} - ERROR: PSMinIO Operation Failed");
-
-                // Log each error detail
+                // Log each error detail (reduced set)
                 foreach (DictionaryEntry detail in errorDetails)
                 {
                     var key = detail.Key?.ToString() ?? "Unknown";
@@ -159,7 +135,7 @@ namespace PSMinIO.Utils
                         value = value.Substring(0, 197) + "...";
                     }
 
-                    cmdlet.WriteWarning($"{timestamp} - ERROR: {key}: {value}");
+                    cmdlet.WriteWarning($"{timestamp} - {key}: {value}");
                 }
             }
             catch (InvalidOperationException)
