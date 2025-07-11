@@ -44,7 +44,7 @@ if (!(Test-Path $moduleDir)) {
 $filesToCopy = @(
     @{ Source = "$buildOutput\PSMinIO.dll"; Dest = "$moduleDir\PSMinIO.dll" }
     @{ Source = "$buildOutput\PSMinIO.pdb"; Dest = "$moduleDir\PSMinIO.pdb" }
-    @{ Source = "$buildOutput\Minio.dll"; Dest = "$moduleDir\Minio.dll" }
+    @{ Source = "$buildOutput\System.Text.Json.dll"; Dest = "$moduleDir\System.Text.Json.dll" }
 )
 
 foreach ($file in $filesToCopy) {

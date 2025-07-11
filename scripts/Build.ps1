@@ -152,7 +152,6 @@ try {
     $filesToCopy = @(
         'PSMinIO.dll',
         'PSMinIO.pdb',
-        'Minio.dll',
         'System.Text.Json.dll'
     )
     

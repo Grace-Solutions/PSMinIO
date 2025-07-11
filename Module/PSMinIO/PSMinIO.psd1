@@ -3,7 +3,7 @@
     RootModule = 'bin\PSMinIO.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.07.11.1151'
+    ModuleVersion = '2025.07.11.1421'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -45,7 +45,7 @@
     # RequiredModules = @()
 
     # Assemblies that must be loaded prior to importing this module
-    RequiredAssemblies = @('bin\PSMinIO.dll', 'bin\Minio.dll')
+    RequiredAssemblies = @('bin\PSMinIO.dll')
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
     # ScriptsToProcess = @()
@@ -67,18 +67,10 @@
         'Connect-MinIO',
         'Get-MinIOBucket',
         'New-MinIOBucket',
-        'Remove-MinIOBucket',
         'Test-MinIOBucketExists',
         'Get-MinIOObject',
         'New-MinIOObject',
-        'New-MinIOObjectChunked',
-        'New-MinIOFolder',
-        'Get-MinIOObjectContent',
-        'Get-MinIOObjectContentChunked',
-        'Remove-MinIOObject',
-        'Get-MinIOBucketPolicy',
-        'Set-MinIOBucketPolicy',
-        'Get-MinIOStats'
+        'Get-MinIOObjectContent'
     )
 
     # Variables to export from this module
@@ -97,7 +89,6 @@
     FileList = @(
         'PSMinIO.psd1',
         'bin\PSMinIO.dll',
-        'bin\Minio.dll',
         'types\PSMinIO.Types.ps1xml',
         'types\PSMinIO.Format.ps1xml'
     )
@@ -119,7 +110,7 @@
 
             # ReleaseNotes of this module
             ReleaseNotes = @'
-## Version 2025.07.11.1151 - Enhanced Release
+## Version 2025.07.11.1421 - Enhanced Release
 
 ### Major Features
 - Complete Get-MinIOObject cmdlet with advanced filtering, sorting, and pagination
@@ -165,6 +156,10 @@ This release provides enterprise-grade functionality with professional documenta
     # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
     # DefaultCommandPrefix = ''
 }
+
+
+
+
 
 
 

@@ -1,7 +1,6 @@
 using System;
 using System.Management.Automation;
-using PSMinIO.Models;
-using PSMinIO.Utils;
+using PSMinIO.Core.Models;
 
 namespace PSMinIO.Cmdlets
 {
@@ -21,141 +20,119 @@ namespace PSMinIO.Cmdlets
         public string BucketName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Region where the bucket should be created
+        /// Region where the bucket should be created (default: us-east-1)
         /// </summary>
         [Parameter]
         [ValidateNotNullOrEmpty]
-        public string? Region { get; set; }
+        public string Region { get; set; } = "us-east-1";
 
         /// <summary>
-        /// Force creation even if bucket already exists (no error will be thrown)
+        /// Force creation even if bucket already exists
         /// </summary>
         [Parameter]
         public SwitchParameter Force { get; set; }
 
-
+        /// <summary>
+        /// Return the created bucket information
+        /// </summary>
+        [Parameter]
+        public SwitchParameter PassThru { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConnection();
-            ValidateBucketNameForCreation(BucketName);
+            ValidateBucketName(BucketName);
 
-            // Use region from parameter or configuration
-            var region = Region ?? Configuration.Region;
-
-            if (ShouldProcess(BucketName, $"Create bucket in region '{region}'"))
+            if (ShouldProcess(BucketName, "Create MinIO bucket"))
             {
                 ExecuteOperation("CreateBucket", () =>
                 {
+                    WriteVerboseMessage("Creating bucket '{0}' in region '{1}'", BucketName, Region);
+
                     // Check if bucket already exists
-                    var exists = Client.BucketExists(BucketName);
-                    
-                    if (exists)
+                    bool bucketExists = false;
+                    try
+                    {
+                        bucketExists = S3Client.BucketExists(BucketName);
+                        WriteVerboseMessage("Bucket existence check: {0}", bucketExists ? "exists" : "does not exist");
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteVerboseMessage("Could not check bucket existence: {0}", ex.Message);
+                    }
+
+                    if (bucketExists)
                     {
                         if (Force.IsPresent)
                         {
-                            MinIOLogger.WriteVerbose(this, 
-                                "Bucket '{0}' already exists, but Force parameter specified", BucketName);
+                            WriteVerboseMessage("Bucket '{0}' already exists, but Force parameter specified", BucketName);
                         }
                         else
                         {
-                            WriteError(new ErrorRecord(
-                                new InvalidOperationException($"Bucket '{BucketName}' already exists. Use -Force to suppress this error."),
+                            var errorMessage = $"Bucket '{BucketName}' already exists. Use -Force to suppress this error.";
+                            var errorRecord = new ErrorRecord(
+                                new InvalidOperationException(errorMessage),
                                 "BucketAlreadyExists",
                                 ErrorCategory.ResourceExists,
-                                BucketName));
-                            return;
+                                BucketName);
+
+                            ThrowTerminatingError(errorRecord);
                         }
                     }
                     else
                     {
                         // Create the bucket
-                        MinIOLogger.WriteVerbose(this, 
-                            "Creating bucket '{0}' in region '{1}'", BucketName, region);
-
-                        Client.CreateBucket(BucketName, region);
-
-                        MinIOLogger.WriteVerbose(this,
-                            "Successfully created bucket '{0}'", BucketName);
+                        try
+                        {
+                            S3Client.CreateBucket(BucketName, Region);
+                            WriteVerboseMessage("Successfully created bucket '{0}'", BucketName);
+                        }
+                        catch (Exception ex)
+                        {
+                            WriteVerboseMessage("Failed to create bucket '{0}': {1}", BucketName, ex.Message);
+                            throw;
+                        }
                     }
 
-                    // Always return bucket information
-                    try
+                    // Return bucket information if requested
+                    if (PassThru.IsPresent)
                     {
-                        // Get the created bucket information
-                        var allBuckets = Client.ListBuckets();
-                        var createdBucket = allBuckets.Find(b =>
-                            string.Equals(b.Name, BucketName, StringComparison.OrdinalIgnoreCase));
+                        WriteVerboseMessage("Retrieving information for created bucket '{0}'", BucketName);
 
-                        if (createdBucket != null)
+                        try
                         {
-                            createdBucket.Region = region;
-                            WriteObject(createdBucket);
+                            // Get updated bucket list to find our bucket
+                            var buckets = S3Client.ListBuckets();
+                            var createdBucket = buckets.Find(b => string.Equals(b.Name, BucketName, StringComparison.OrdinalIgnoreCase));
+
+                            if (createdBucket != null)
+                            {
+                                createdBucket.Region = Region;
+                                WriteObject(createdBucket);
+                            }
+                            else
+                            {
+                                // Create a basic bucket info object if we can't find it in the list
+                                var bucketInfo = new MinIOBucketInfo(BucketName, DateTime.UtcNow, Region);
+                                WriteObject(bucketInfo);
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            // Fallback: create a basic bucket info object
-                            var bucketInfo = new MinIOBucketInfo(BucketName, DateTime.UtcNow, region);
+                            WriteWarningMessage("Bucket created successfully but could not retrieve bucket information: {0}", ex.Message);
+
+                            // Create a basic bucket info object
+                            var bucketInfo = new MinIOBucketInfo(BucketName, DateTime.UtcNow, Region);
                             WriteObject(bucketInfo);
                         }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        MinIOLogger.WriteWarning(this,
-                            "Bucket created successfully, but failed to retrieve bucket information: {0}",
-                            ex.Message);
-
-                        // Still return a basic bucket info object
-                        var bucketInfo = new MinIOBucketInfo(BucketName, DateTime.UtcNow, region);
-                        WriteObject(bucketInfo);
+                        WriteVerboseMessage("Bucket '{0}' created successfully", BucketName);
                     }
-
-                }, $"Bucket: {BucketName}, Region: {region}");
-            }
-        }
-
-        /// <summary>
-        /// Validates the bucket name according to MinIO/S3 naming conventions for bucket creation
-        /// </summary>
-        /// <param name="bucketName">Bucket name to validate</param>
-        private void ValidateBucketNameForCreation(string bucketName, string parameterName = "BucketName")
-        {
-            base.ValidateBucketName(bucketName, parameterName);
-
-            // Additional validation for bucket creation
-            if (bucketName.Contains("..") || bucketName.StartsWith(".") || bucketName.EndsWith("."))
-            {
-                ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"Bucket name '{bucketName}' contains invalid characters or patterns"),
-                    "InvalidBucketName",
-                    ErrorCategory.InvalidArgument,
-                    bucketName));
-            }
-
-            // Check for uppercase letters (not allowed in S3/MinIO)
-            if (bucketName != bucketName.ToLowerInvariant())
-            {
-                ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"Bucket name '{bucketName}' must be lowercase"),
-                    "InvalidBucketName",
-                    ErrorCategory.InvalidArgument,
-                    bucketName));
-            }
-
-            // Check for invalid characters
-            foreach (char c in bucketName)
-            {
-                if (!char.IsLetterOrDigit(c) && c != '-' && c != '.')
-                {
-                    ThrowTerminatingError(new ErrorRecord(
-                        new ArgumentException($"Bucket name '{bucketName}' contains invalid character '{c}'. Only lowercase letters, numbers, hyphens, and periods are allowed."),
-                        "InvalidBucketName",
-                        ErrorCategory.InvalidArgument,
-                        bucketName));
-                }
+                }, $"Bucket: {BucketName}, Region: {Region}");
             }
         }
     }

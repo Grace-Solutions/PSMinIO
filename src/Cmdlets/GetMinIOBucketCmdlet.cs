@@ -1,180 +1,143 @@
 using System;
 using System.Linq;
 using System.Management.Automation;
-using PSMinIO.Models;
-using PSMinIO.Utils;
+using PSMinIO.Core.Models;
 
 namespace PSMinIO.Cmdlets
 {
     /// <summary>
     /// Gets information about MinIO buckets
     /// </summary>
-    [Cmdlet(VerbsCommon.Get, "MinIOBucket", SupportsShouldProcess = true)]
+    [Cmdlet(VerbsCommon.Get, "MinIOBucket")]
     [OutputType(typeof(MinIOBucketInfo))]
     public class GetMinIOBucketCmdlet : MinIOBaseCmdlet
     {
         /// <summary>
-        /// Name of a specific bucket to retrieve. If not specified, all buckets are returned.
+        /// Name of a specific bucket to retrieve (supports wildcards)
         /// </summary>
         [Parameter(Position = 0, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
-        [ValidateNotNullOrEmpty]
+        [SupportsWildcards]
         [Alias("Bucket")]
-        public string? BucketName { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>
-        /// Include additional statistics like object count and total size for each bucket
+        /// Include bucket statistics (object count and total size)
         /// </summary>
         [Parameter]
-        [Alias("Stats")]
-        public SwitchParameter IncludeStatistics { get; set; }
+        public SwitchParameter IncludeStats { get; set; }
+
+        /// <summary>
+        /// Include bucket policy information
+        /// </summary>
+        [Parameter]
+        public SwitchParameter IncludePolicy { get; set; }
+
+        /// <summary>
+        /// Sort buckets by the specified property
+        /// </summary>
+        [Parameter]
+        [ValidateSet("Name", "CreationDate", "ObjectCount", "TotalSize")]
+        public string SortBy { get; set; } = "Name";
+
+        /// <summary>
+        /// Sort in descending order
+        /// </summary>
+        [Parameter]
+        public SwitchParameter Descending { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConnection();
+            ExecuteOperation("ListBuckets", () =>
+            {
+                WriteVerboseMessage("Retrieving bucket list from MinIO server");
 
-            if (!string.IsNullOrWhiteSpace(BucketName))
-            {
-                // Get specific bucket
-                GetSpecificBucket(BucketName!);
-            }
-            else
-            {
                 // Get all buckets
-                GetAllBuckets();
-            }
-        }
+                var buckets = S3Client.ListBuckets();
 
-        /// <summary>
-        /// Gets information about a specific bucket
-        /// </summary>
-        /// <param name="bucketName">Name of the bucket</param>
-        private void GetSpecificBucket(string bucketName)
-        {
-            ValidateBucketName(bucketName);
+                WriteVerboseMessage("Retrieved {0} buckets", buckets.Count);
 
-            if (ShouldProcess(bucketName, "Get bucket information"))
-            {
-                ExecuteOperation("GetBucket", () =>
+                // Filter by name if specified
+                if (!string.IsNullOrEmpty(Name))
                 {
-                    // First check if bucket exists
-                    var exists = Client.BucketExists(bucketName);
-                    if (!exists)
-                    {
-                        WriteError(new ErrorRecord(
-                            new InvalidOperationException($"Bucket '{bucketName}' does not exist"),
-                            "BucketNotFound",
-                            ErrorCategory.ObjectNotFound,
-                            bucketName));
-                        return;
-                    }
+                    var wildcardPattern = new WildcardPattern(Name, WildcardOptions.IgnoreCase);
+                    buckets = buckets.Where(b => b.Name != null && wildcardPattern.IsMatch(b.Name)).ToList();
+                    WriteVerboseMessage("Filtered to {0} buckets matching pattern '{1}'", buckets.Count, Name);
+                }
 
-                    // Get all buckets and find the specific one
-                    var allBuckets = Client.ListBuckets();
-                    var bucket = allBuckets.FirstOrDefault(b => 
-                        string.Equals(b.Name, bucketName, StringComparison.OrdinalIgnoreCase));
-
-                    if (bucket != null)
-                    {
-                        if (IncludeStatistics.IsPresent)
-                        {
-                            PopulateBucketStatistics(bucket);
-                        }
-
-                        WriteObject(bucket);
-                    }
-                    else
-                    {
-                        WriteError(new ErrorRecord(
-                            new InvalidOperationException($"Bucket '{bucketName}' not found in bucket list"),
-                            "BucketNotFound",
-                            ErrorCategory.ObjectNotFound,
-                            bucketName));
-                    }
-                }, $"Bucket: {bucketName}");
-            }
-        }
-
-        /// <summary>
-        /// Gets information about all buckets
-        /// </summary>
-        private void GetAllBuckets()
-        {
-            if (ShouldProcess("All buckets", "Get bucket information"))
-            {
-                ExecuteOperation("ListBuckets", () =>
+                // Enhance bucket information if requested
+                if (IncludeStats.IsPresent || IncludePolicy.IsPresent)
                 {
-                    var buckets = Client.ListBuckets();
-
-                    if (IncludeStatistics.IsPresent)
+                    for (int i = 0; i < buckets.Count; i++)
                     {
-                        MinIOLogger.WriteVerbose(this, "Gathering statistics for {0} buckets", buckets.Count);
-                        
-                        for (int i = 0; i < buckets.Count; i++)
+                        var bucket = buckets[i];
+                        WriteVerboseMessage("Enhancing information for bucket '{0}' ({1}/{2})", bucket.Name, i + 1, buckets.Count);
+
+                        try
                         {
-                            var bucket = buckets[i];
-                            
-                            // Show progress for statistics gathering
-                            var progressRecord = new ProgressRecord(1, "Gathering Bucket Statistics", 
-                                $"Processing bucket: {bucket.Name}")
+                            // Get bucket statistics
+                            if (IncludeStats.IsPresent)
                             {
-                                PercentComplete = (int)((double)(i + 1) / buckets.Count * 100)
-                            };
-                            WriteProgress(progressRecord);
+                                WriteVerboseMessage("Getting statistics for bucket '{0}'", bucket.Name);
+                                var objects = S3Client.ListObjects(bucket.Name, recursive: true, maxObjects: int.MaxValue);
+                                bucket.ObjectCount = objects.Count;
+                                bucket.TotalSize = objects.Sum(o => o.Size);
+                                WriteVerboseMessage("Bucket '{0}' contains {1} objects ({2})", 
+                                    bucket.Name, bucket.ObjectCount, Utils.SizeFormatter.FormatBytes(bucket.TotalSize ?? 0));
+                            }
 
-                            PopulateBucketStatistics(bucket);
+                            // Get bucket policy
+                            if (IncludePolicy.IsPresent)
+                            {
+                                WriteVerboseMessage("Getting policy for bucket '{0}'", bucket.Name);
+                                try
+                                {
+                                    bucket.Policy = S3Client.GetBucketPolicy(bucket.Name);
+                                    WriteVerboseMessage("Retrieved policy for bucket '{0}'", bucket.Name);
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteVerboseMessage("No policy found for bucket '{0}': {1}", bucket.Name, ex.Message);
+                                    bucket.Policy = null;
+                                }
+                            }
                         }
-
-                        // Complete progress
-                        WriteProgress(new ProgressRecord(1, "Gathering Bucket Statistics", "Completed")
+                        catch (Exception ex)
                         {
-                            PercentComplete = 100,
-                            RecordType = ProgressRecordType.Completed
-                        });
+                            WriteWarningMessage("Failed to enhance information for bucket '{0}': {1}", bucket.Name, ex.Message);
+                        }
                     }
+                }
 
-                    // Output all buckets
-                    foreach (var bucket in buckets)
-                    {
-                        WriteObject(bucket);
-                    }
+                // Sort buckets
+                buckets = SortBy switch
+                {
+                    "Name" => Descending.IsPresent 
+                        ? buckets.OrderByDescending(b => b.Name).ToList()
+                        : buckets.OrderBy(b => b.Name).ToList(),
+                    "CreationDate" => Descending.IsPresent
+                        ? buckets.OrderByDescending(b => b.CreationDate).ToList()
+                        : buckets.OrderBy(b => b.CreationDate).ToList(),
+                    "ObjectCount" => Descending.IsPresent
+                        ? buckets.OrderByDescending(b => b.ObjectCount ?? 0).ToList()
+                        : buckets.OrderBy(b => b.ObjectCount ?? 0).ToList(),
+                    "TotalSize" => Descending.IsPresent
+                        ? buckets.OrderByDescending(b => b.TotalSize ?? 0).ToList()
+                        : buckets.OrderBy(b => b.TotalSize ?? 0).ToList(),
+                    _ => buckets
+                };
 
-                    MinIOLogger.WriteVerbose(this, "Retrieved information for {0} buckets", buckets.Count);
-                });
-            }
-        }
+                WriteVerboseMessage("Returning {0} buckets sorted by {1} ({2})", 
+                    buckets.Count, SortBy, Descending.IsPresent ? "descending" : "ascending");
 
-        /// <summary>
-        /// Populates additional statistics for a bucket
-        /// </summary>
-        /// <param name="bucket">Bucket to populate statistics for</param>
-        private void PopulateBucketStatistics(MinIOBucketInfo bucket)
-        {
-            try
-            {
-                MinIOLogger.WriteVerbose(this, "Gathering statistics for bucket: {0}", bucket.Name);
-
-                var objects = Client.ListObjects(bucket.Name, recursive: true);
-                
-                bucket.ObjectCount = objects.Count;
-                bucket.Size = objects.Sum(obj => obj.Size);
-
-                MinIOLogger.WriteVerbose(this, 
-                    "Bucket '{0}' statistics: {1} objects, {2} bytes total", 
-                    bucket.Name, bucket.ObjectCount, bucket.Size);
-            }
-            catch (Exception ex)
-            {
-                MinIOLogger.WriteWarning(this, 
-                    "Failed to gather statistics for bucket '{0}': {1}", 
-                    bucket.Name, ex.Message);
-                
-                // Set statistics to null to indicate they couldn't be retrieved
-                bucket.ObjectCount = null;
-                bucket.Size = null;
-            }
+                // Output results
+                foreach (var bucket in buckets)
+                {
+                    WriteObject(bucket);
+                }
+            });
         }
     }
 }

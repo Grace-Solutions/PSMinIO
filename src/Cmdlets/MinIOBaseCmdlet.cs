@@ -1,9 +1,10 @@
 using System;
-using System.IO;
 using System.Management.Automation;
-using PSMinIO.Models;
+using PSMinIO.Core;
+using PSMinIO.Core.S3;
+using PSMinIO.Utils;
 
-namespace PSMinIO.Utils
+namespace PSMinIO.Cmdlets
 {
     /// <summary>
     /// Base class for all MinIO PowerShell cmdlets
@@ -54,74 +55,54 @@ namespace PSMinIO.Utils
                             ErrorCategory.ConnectionError,
                             _connection));
                     }
-
-                    MinIOLogger.LogOperationStart(this, "UsingConnection", $"Endpoint: {_connection.Configuration.Endpoint}");
                 }
-                return _connection;
+
+                return _connection!;
             }
         }
 
         /// <summary>
-        /// Gets the MinIO client wrapper instance
+        /// Gets the MinIO S3 client instance
         /// </summary>
-        protected MinIOClientWrapper Client => Connection.Client;
+        protected MinIOS3Client S3Client => Connection.S3Client;
 
         /// <summary>
-        /// Gets the current MinIO configuration
-        /// </summary>
-        protected MinIOConfiguration Configuration => Connection.Configuration;
-
-        /// <summary>
-        /// Gets the MinIO connection from parameter or session variable
+        /// Gets the connection from parameter or session variable
         /// </summary>
         /// <returns>MinIO connection or null if not found</returns>
         private MinIOConnection? GetConnection()
         {
-            // First, check if connection was provided via parameter
+            // First, try the parameter
             if (MinIOConnection != null)
             {
-                MinIOLogger.WriteVerbose(this, "Using MinIO connection from parameter");
                 return MinIOConnection;
             }
 
-            // Next, check session variable
+            // Then try the session variable
             try
             {
-                var sessionConnection = SessionState.PSVariable.GetValue(SessionVariable) as MinIOConnection;
-                if (sessionConnection != null)
+                var sessionConnection = SessionState.PSVariable.GetValue(SessionVariable);
+                if (sessionConnection is MinIOConnection connection)
                 {
-                    MinIOLogger.WriteVerbose(this, "Using MinIO connection from session variable: {0}", SessionVariable);
-                    return sessionConnection;
+                    return connection;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                MinIOLogger.WriteVerbose(this, "Failed to retrieve connection from session variable '{0}': {1}", SessionVariable, ex.Message);
+                // Ignore errors when accessing session variables
             }
 
-            MinIOLogger.WriteVerbose(this, "No MinIO connection found in parameter or session variable '{0}'", SessionVariable);
             return null;
         }
 
         /// <summary>
-        /// Validates that the MinIO connection is available and valid
-        /// </summary>
-        protected void ValidateConnection()
-        {
-            var connection = Connection; // This will throw if invalid
-        }
-
-        /// <summary>
-        /// Executes an operation with proper error handling and logging
+        /// Executes an operation with consistent error handling and logging
         /// </summary>
         /// <param name="operationName">Name of the operation for logging</param>
-        /// <param name="operation">The operation to execute</param>
+        /// <param name="operation">Operation to execute</param>
         /// <param name="details">Optional operation details for logging</param>
         protected void ExecuteOperation(string operationName, Action operation, string? details = null)
         {
-            if (operation == null)
-                throw new ArgumentNullException(nameof(operationName));
-
             var startTime = DateTime.UtcNow;
             MinIOLogger.LogOperationStart(this, operationName, details);
 
@@ -138,23 +119,20 @@ namespace PSMinIO.Utils
                 // Determine appropriate error category
                 var category = GetErrorCategory(ex);
                 
-                WriteError(new ErrorRecord(ex, $"{operationName}Failed", category, null));
+                ThrowTerminatingError(new ErrorRecord(ex, $"{operationName}Failed", category, null));
             }
         }
 
         /// <summary>
-        /// Executes an operation with return value and proper error handling and logging
+        /// Executes an operation with return value and consistent error handling and logging
         /// </summary>
         /// <typeparam name="T">Return type</typeparam>
         /// <param name="operationName">Name of the operation for logging</param>
-        /// <param name="operation">The operation to execute</param>
+        /// <param name="operation">Operation to execute</param>
         /// <param name="details">Optional operation details for logging</param>
-        /// <returns>Result of the operation</returns>
+        /// <returns>Operation result</returns>
         protected T ExecuteOperation<T>(string operationName, Func<T> operation, string? details = null)
         {
-            if (operation == null)
-                throw new ArgumentNullException(nameof(operation));
-
             var startTime = DateTime.UtcNow;
             MinIOLogger.LogOperationStart(this, operationName, details);
 
@@ -180,30 +158,29 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
-        /// Determines the appropriate PowerShell error category based on the exception type
+        /// Determines the appropriate PowerShell error category for an exception
         /// </summary>
-        /// <param name="exception">The exception to categorize</param>
-        /// <returns>Appropriate ErrorCategory</returns>
-        protected virtual ErrorCategory GetErrorCategory(Exception exception)
+        /// <param name="exception">Exception to categorize</param>
+        /// <returns>Appropriate error category</returns>
+        protected ErrorCategory GetErrorCategory(Exception exception)
         {
             return exception switch
             {
-                ArgumentNullException => ErrorCategory.InvalidArgument,
-                ArgumentException => ErrorCategory.InvalidArgument,
+                ArgumentException or ArgumentNullException => ErrorCategory.InvalidArgument,
                 UnauthorizedAccessException => ErrorCategory.PermissionDenied,
-                System.Net.WebException => ErrorCategory.ConnectionError,
                 System.Net.Http.HttpRequestException => ErrorCategory.ConnectionError,
                 TimeoutException => ErrorCategory.OperationTimeout,
                 InvalidOperationException => ErrorCategory.InvalidOperation,
+                System.IO.FileNotFoundException => ErrorCategory.ObjectNotFound,
+                System.IO.DirectoryNotFoundException => ErrorCategory.ObjectNotFound,
+                System.IO.IOException => ErrorCategory.WriteError,
                 NotSupportedException => ErrorCategory.NotImplemented,
-                FileNotFoundException => ErrorCategory.ObjectNotFound,
-                DirectoryNotFoundException => ErrorCategory.ObjectNotFound,
                 _ => ErrorCategory.NotSpecified
             };
         }
 
         /// <summary>
-        /// Validates a bucket name according to MinIO/S3 naming rules
+        /// Validates that a bucket name is valid according to S3 naming rules
         /// </summary>
         /// <param name="bucketName">Bucket name to validate</param>
         /// <param name="parameterName">Parameter name for error reporting</param>
@@ -212,17 +189,26 @@ namespace PSMinIO.Utils
             if (string.IsNullOrWhiteSpace(bucketName))
             {
                 ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"{parameterName} cannot be null or empty"),
+                    new ArgumentException($"Bucket name cannot be null or empty", parameterName),
                     "InvalidBucketName",
                     ErrorCategory.InvalidArgument,
                     bucketName));
             }
 
-            // Basic bucket name validation (simplified)
+            // Basic S3 bucket name validation
             if (bucketName.Length < 3 || bucketName.Length > 63)
             {
                 ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"{parameterName} must be between 3 and 63 characters long"),
+                    new ArgumentException($"Bucket name must be between 3 and 63 characters long", parameterName),
+                    "InvalidBucketName",
+                    ErrorCategory.InvalidArgument,
+                    bucketName));
+            }
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(bucketName, @"^[a-z0-9][a-z0-9\-]*[a-z0-9]$"))
+            {
+                ThrowTerminatingError(new ErrorRecord(
+                    new ArgumentException($"Bucket name contains invalid characters. Must contain only lowercase letters, numbers, and hyphens", parameterName),
                     "InvalidBucketName",
                     ErrorCategory.InvalidArgument,
                     bucketName));
@@ -230,7 +216,7 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
-        /// Validates an object name
+        /// Validates that an object name is valid
         /// </summary>
         /// <param name="objectName">Object name to validate</param>
         /// <param name="parameterName">Parameter name for error reporting</param>
@@ -239,7 +225,16 @@ namespace PSMinIO.Utils
             if (string.IsNullOrWhiteSpace(objectName))
             {
                 ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"{parameterName} cannot be null or empty"),
+                    new ArgumentException($"Object name cannot be null or empty", parameterName),
+                    "InvalidObjectName",
+                    ErrorCategory.InvalidArgument,
+                    objectName));
+            }
+
+            if (objectName.Length > 1024)
+            {
+                ThrowTerminatingError(new ErrorRecord(
+                    new ArgumentException($"Object name cannot be longer than 1024 characters", parameterName),
                     "InvalidObjectName",
                     ErrorCategory.InvalidArgument,
                     objectName));
@@ -247,40 +242,33 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
-        /// Cleans up resources when the cmdlet is disposed
+        /// Writes verbose output with consistent formatting
         /// </summary>
-        protected override void EndProcessing()
+        /// <param name="message">Message to write</param>
+        /// <param name="args">Format arguments</param>
+        protected void WriteVerboseMessage(string message, params object[] args)
         {
-            try
-            {
-                // Note: We don't dispose the connection here as it may be shared across cmdlets
-                // The connection should be disposed by the user when no longer needed
-                _connection = null;
-            }
-            catch (Exception ex)
-            {
-                MinIOLogger.WriteVerbose(this, $"Error during cleanup: {ex.Message}");
-            }
-
-            base.EndProcessing();
+            MinIOLogger.WriteVerbose(this, message, args);
         }
 
         /// <summary>
-        /// Handles stopping the cmdlet (Ctrl+C)
+        /// Writes warning output with consistent formatting
         /// </summary>
-        protected override void StopProcessing()
+        /// <param name="message">Warning message to write</param>
+        /// <param name="args">Format arguments</param>
+        protected void WriteWarningMessage(string message, params object[] args)
         {
-            try
-            {
-                _connection?.Client.CancelOperations();
-                MinIOLogger.WriteVerbose(this, "Operation cancelled by user");
-            }
-            catch (Exception ex)
-            {
-                MinIOLogger.WriteVerbose(this, $"Error cancelling operations: {ex.Message}");
-            }
+            MinIOLogger.WriteWarning(this, message, args);
+        }
 
-            base.StopProcessing();
+        /// <summary>
+        /// Writes debug output with consistent formatting
+        /// </summary>
+        /// <param name="message">Debug message to write</param>
+        /// <param name="args">Format arguments</param>
+        protected void WriteDebugMessage(string message, params object[] args)
+        {
+            MinIOLogger.WriteDebug(this, message, args);
         }
     }
 }

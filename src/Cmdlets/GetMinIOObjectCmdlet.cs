@@ -1,175 +1,152 @@
 using System;
 using System.Linq;
 using System.Management.Automation;
-using PSMinIO.Models;
-using PSMinIO.Utils;
+using PSMinIO.Core.Models;
 
 namespace PSMinIO.Cmdlets
 {
     /// <summary>
-    /// Gets information about objects in a MinIO bucket
+    /// Gets objects from MinIO buckets
     /// </summary>
-    [Cmdlet(VerbsCommon.Get, "MinIOObject", SupportsShouldProcess = true)]
+    [Cmdlet(VerbsCommon.Get, "MinIOObject")]
     [OutputType(typeof(MinIOObjectInfo))]
     public class GetMinIOObjectCmdlet : MinIOBaseCmdlet
     {
         /// <summary>
-        /// Name of the bucket to list objects from
+        /// Name of the bucket
         /// </summary>
-        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true)]
+        [Parameter(Position = 0, Mandatory = true)]
         [ValidateNotNullOrEmpty]
-        [Alias("Bucket")]
         public string BucketName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Optional prefix to filter objects
+        /// Object name or prefix to filter objects (supports wildcards)
         /// </summary>
-        [Parameter(Position = 1, ValueFromPipelineByPropertyName = true)]
-        [Alias("Filter")]
-        public string? Prefix { get; set; }
+        [Parameter(Position = 1, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
+        [SupportsWildcards]
+        [Alias("Key", "Prefix")]
+        public string? Name { get; set; }
 
         /// <summary>
-        /// Specific object name to retrieve. If specified, only this object is returned.
-        /// </summary>
-        [Parameter(ValueFromPipelineByPropertyName = true)]
-        [Alias("Object", "Name")]
-        public string? ObjectName { get; set; }
-
-        /// <summary>
-        /// Whether to list objects recursively (default: true)
+        /// List objects recursively (default: true)
         /// </summary>
         [Parameter]
         public SwitchParameter Recursive { get; set; } = true;
 
         /// <summary>
-        /// Include all versions of objects (for versioned buckets)
-        /// </summary>
-        [Parameter]
-        [Alias("Versions")]
-        public SwitchParameter IncludeVersions { get; set; }
-
-        /// <summary>
-        /// Maximum number of objects to return
+        /// Maximum number of objects to return (default: 1000)
         /// </summary>
         [Parameter]
         [ValidateRange(1, 10000)]
-        [Alias("Limit")]
-        public int? MaxObjects { get; set; }
-
-        /// <summary>
-        /// Only return objects (exclude directory markers)
-        /// </summary>
-        [Parameter]
-        [Alias("FilesOnly")]
-        public SwitchParameter ObjectsOnly { get; set; }
+        public int MaxObjects { get; set; } = 1000;
 
         /// <summary>
         /// Sort objects by the specified property
         /// </summary>
         [Parameter]
-        [ValidateSet("Name", "Size", "LastModified", "ETag")]
-        public string? SortBy { get; set; }
+        [ValidateSet("Name", "Size", "LastModified")]
+        public string SortBy { get; set; } = "Name";
 
         /// <summary>
-        /// Sort in descending order (default: ascending)
+        /// Sort in descending order
         /// </summary>
         [Parameter]
-        [Alias("Desc")]
         public SwitchParameter Descending { get; set; }
+
+        /// <summary>
+        /// Include only directories (objects ending with /)
+        /// </summary>
+        [Parameter]
+        public SwitchParameter DirectoriesOnly { get; set; }
+
+        /// <summary>
+        /// Exclude directories (objects ending with /)
+        /// </summary>
+        [Parameter]
+        public SwitchParameter ExcludeDirectories { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            var targetDescription = !string.IsNullOrWhiteSpace(ObjectName)
-                ? $"object '{ObjectName}'"
-                : !string.IsNullOrWhiteSpace(Prefix)
-                    ? $"objects with prefix '{Prefix}'"
-                    : "all objects";
+            ValidateBucketName(BucketName);
 
-            // Determine the prefix to use
-            var searchPrefix = !string.IsNullOrWhiteSpace(ObjectName) ? ObjectName : Prefix;
-
-            if (ShouldProcess(BucketName, $"List {targetDescription}"))
+            ExecuteOperation("ListObjects", () =>
             {
-                ExecuteOperation("ListObjects", () =>
+                WriteVerboseMessage("Listing objects in bucket '{0}'", BucketName);
+
+                // Check if bucket exists
+                if (!S3Client.BucketExists(BucketName))
                 {
-                    // Check if bucket exists
-                    var bucketExists = Client.BucketExists(BucketName);
-                    if (!bucketExists)
-                    {
-                        WriteError(new ErrorRecord(
-                            new InvalidOperationException($"Bucket '{BucketName}' does not exist"),
-                            "BucketNotFound",
-                            ErrorCategory.ObjectNotFound,
-                            BucketName));
-                        return;
-                    }
+                    var errorRecord = new ErrorRecord(
+                        new InvalidOperationException($"Bucket '{BucketName}' does not exist"),
+                        "BucketNotFound",
+                        ErrorCategory.ObjectNotFound,
+                        BucketName);
+                    ThrowTerminatingError(errorRecord);
+                }
 
-                    MinIOLogger.WriteVerbose(this, 
-                        "Listing objects in bucket '{0}' with prefix '{1}', recursive: {2}", 
-                        BucketName, searchPrefix ?? "(none)", Recursive.IsPresent);
+                // Determine prefix for API call
+                string? apiPrefix = null;
+                if (!string.IsNullOrEmpty(Name) && !WildcardPattern.ContainsWildcardCharacters(Name))
+                {
+                    // If no wildcards, use as prefix for efficient API filtering
+                    apiPrefix = Name;
+                }
 
-                    // Get objects from MinIO
-                    var objects = Client.ListObjects(BucketName, searchPrefix, Recursive.IsPresent, IncludeVersions.IsPresent);
+                WriteVerboseMessage("Retrieving objects with prefix '{0}', recursive: {1}, max: {2}", 
+                    apiPrefix ?? "(none)", Recursive.IsPresent, MaxObjects);
 
-                    MinIOLogger.WriteVerbose(this, "Found {0} objects", objects.Count);
+                // Get objects from MinIO
+                var objects = S3Client.ListObjects(BucketName, apiPrefix, Recursive.IsPresent, MaxObjects);
 
-                    // Filter for exact object name match if specified
-                    if (!string.IsNullOrWhiteSpace(ObjectName))
-                    {
-                        objects = objects.Where(obj => 
-                            string.Equals(obj.Name, ObjectName, StringComparison.Ordinal)).ToList();
-                    }
+                WriteVerboseMessage("Retrieved {0} objects from MinIO", objects.Count);
 
-                    // Filter out directory markers if ObjectsOnly is specified
-                    if (ObjectsOnly.IsPresent)
-                    {
-                        objects = objects.Where(obj => 
-                            !obj.Name.EndsWith("/") && obj.Size > 0).ToList();
-                    }
+                // Apply client-side filtering if wildcards are used
+                if (!string.IsNullOrEmpty(Name) && WildcardPattern.ContainsWildcardCharacters(Name))
+                {
+                    var wildcardPattern = new WildcardPattern(Name, WildcardOptions.IgnoreCase);
+                    objects = objects.Where(o => o.Name != null && wildcardPattern.IsMatch(o.Name)).ToList();
+                    WriteVerboseMessage("Filtered to {0} objects matching pattern '{1}'", objects.Count, Name);
+                }
 
-                    // Apply sorting if specified
-                    if (!string.IsNullOrWhiteSpace(SortBy))
-                    {
-                        objects = SortBy.ToLowerInvariant() switch
-                        {
-                            "name" => Descending.IsPresent 
-                                ? objects.OrderByDescending(o => o.Name).ToList()
-                                : objects.OrderBy(o => o.Name).ToList(),
-                            "size" => Descending.IsPresent 
-                                ? objects.OrderByDescending(o => o.Size).ToList()
-                                : objects.OrderBy(o => o.Size).ToList(),
-                            "lastmodified" => Descending.IsPresent 
-                                ? objects.OrderByDescending(o => o.LastModified).ToList()
-                                : objects.OrderBy(o => o.LastModified).ToList(),
-                            "etag" => Descending.IsPresent 
-                                ? objects.OrderByDescending(o => o.ETag).ToList()
-                                : objects.OrderBy(o => o.ETag).ToList(),
-                            _ => objects
-                        };
-                    }
+                // Apply directory filters
+                if (DirectoriesOnly.IsPresent)
+                {
+                    objects = objects.Where(o => o.IsDirectory).ToList();
+                    WriteVerboseMessage("Filtered to {0} directories only", objects.Count);
+                }
+                else if (ExcludeDirectories.IsPresent)
+                {
+                    objects = objects.Where(o => !o.IsDirectory).ToList();
+                    WriteVerboseMessage("Filtered to {0} objects excluding directories", objects.Count);
+                }
 
-                    // Apply limit if specified
-                    if (MaxObjects.HasValue && objects.Count > MaxObjects.Value)
-                    {
-                        MinIOLogger.WriteVerbose(this, 
-                            "Limiting results to {0} objects", MaxObjects.Value);
-                        objects = objects.Take(MaxObjects.Value).ToList();
-                    }
+                // Sort objects
+                objects = SortBy switch
+                {
+                    "Name" => Descending.IsPresent 
+                        ? objects.OrderByDescending(o => o.Name).ToList()
+                        : objects.OrderBy(o => o.Name).ToList(),
+                    "Size" => Descending.IsPresent
+                        ? objects.OrderByDescending(o => o.Size).ToList()
+                        : objects.OrderBy(o => o.Size).ToList(),
+                    "LastModified" => Descending.IsPresent
+                        ? objects.OrderByDescending(o => o.LastModified).ToList()
+                        : objects.OrderBy(o => o.LastModified).ToList(),
+                    _ => objects
+                };
 
-                    MinIOLogger.WriteVerbose(this, 
-                        "Returning {0} objects after filtering and sorting", objects.Count);
+                WriteVerboseMessage("Returning {0} objects sorted by {1} ({2})", 
+                    objects.Count, SortBy, Descending.IsPresent ? "descending" : "ascending");
 
-                    // Output objects
-                    foreach (var obj in objects)
-                    {
-                        WriteObject(obj);
-                    }
-
-                }, $"Bucket: {BucketName}, Prefix: {searchPrefix ?? "(none)"}");
-            }
+                // Output results
+                foreach (var obj in objects)
+                {
+                    WriteObject(obj);
+                }
+            }, $"Bucket: {BucketName}, Name: {Name ?? "(all)"}");
         }
     }
 }

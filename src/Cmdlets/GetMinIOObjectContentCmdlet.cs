@@ -1,220 +1,205 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Management.Automation;
-using PSMinIO.Models;
+using PSMinIO.Core.Models;
 using PSMinIO.Utils;
 
 namespace PSMinIO.Cmdlets
 {
     /// <summary>
-    /// Downloads an object from a MinIO bucket to a local file
+    /// Downloads objects from MinIO
     /// </summary>
     [Cmdlet(VerbsCommon.Get, "MinIOObjectContent", SupportsShouldProcess = true, ConfirmImpact = ConfirmImpact.Medium)]
-    [OutputType(typeof(FileInfo))]
+    [OutputType(typeof(MinIODownloadResult))]
     public class GetMinIOObjectContentCmdlet : MinIOBaseCmdlet
     {
         /// <summary>
-        /// Name of the bucket containing the object
+        /// Name of the bucket
         /// </summary>
-        [Parameter(Position = 0, Mandatory = true, ValueFromPipelineByPropertyName = true)]
+        [Parameter(Position = 0, Mandatory = true)]
         [ValidateNotNullOrEmpty]
-        [Alias("Bucket")]
         public string BucketName { get; set; } = string.Empty;
 
         /// <summary>
         /// Name of the object to download
         /// </summary>
-        [Parameter(Position = 1, Mandatory = true, ValueFromPipelineByPropertyName = true)]
+        [Parameter(Position = 1, Mandatory = true, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
         [ValidateNotNullOrEmpty]
-        [Alias("Object", "Key")]
+        [Alias("Key", "Name")]
         public string ObjectName { get; set; } = string.Empty;
 
         /// <summary>
-        /// FileInfo object representing where the file should be saved
+        /// Local file path where the object should be saved
         /// </summary>
         [Parameter(Position = 2, Mandatory = true)]
-        [ValidateNotNull]
-        [Alias("File", "Path")]
-        public FileInfo FilePath { get; set; } = null!;
+        [ValidateNotNullOrEmpty]
+        [Alias("Path", "FilePath")]
+        public string LocalPath { get; set; } = string.Empty;
 
         /// <summary>
-        /// Overwrite the file if it already exists
+        /// Force overwrite if local file already exists
         /// </summary>
         [Parameter]
         public SwitchParameter Force { get; set; }
 
+        /// <summary>
+        /// Create directory structure if it doesn't exist
+        /// </summary>
+        [Parameter]
+        public SwitchParameter CreateDirectories { get; set; }
 
+        /// <summary>
+        /// Return the download result information
+        /// </summary>
+        [Parameter]
+        public SwitchParameter PassThru { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            ValidateConnection();
             ValidateBucketName(BucketName);
             ValidateObjectName(ObjectName);
-            ValidateAndPrepareFilePath();
 
-            if (ShouldProcess($"{BucketName}/{ObjectName}", $"Download to '{FilePath}'"))
-            {
-                ExecuteOperation("DownloadObject", () =>
-                {
-                    // Check if bucket exists
-                    var bucketExists = Client.BucketExists(BucketName);
-                    if (!bucketExists)
-                    {
-                        WriteError(new ErrorRecord(
-                            new InvalidOperationException($"Bucket '{BucketName}' does not exist"),
-                            "BucketNotFound",
-                            ErrorCategory.ObjectNotFound,
-                            BucketName));
-                        return;
-                    }
-
-                    // Check if object exists and get its information
-                    var objectInfo = GetObjectInfo();
-                    if (objectInfo == null)
-                    {
-                        WriteError(new ErrorRecord(
-                            new InvalidOperationException($"Object '{ObjectName}' does not exist in bucket '{BucketName}'"),
-                            "ObjectNotFound",
-                            ErrorCategory.ObjectNotFound,
-                            ObjectName));
-                        return;
-                    }
-
-                    MinIOLogger.WriteVerbose(this, 
-                        "Downloading object '{0}' from bucket '{1}' ({2} bytes) to '{3}'", 
-                        ObjectName, BucketName, objectInfo.Size, FilePath);
-
-                    // Create progress reporter
-                    var progressReporter = new ProgressReporter(
-                        this, 
-                        "Downloading Object", 
-                        $"Downloading {objectInfo.GetFileName()}", 
-                        objectInfo.Size, 
-                        1);
-
-                    try
-                    {
-                        // Track timing for this download
-                        var startTime = DateTime.UtcNow;
-
-                        // Download the file with progress reporting
-                        Client.DownloadFile(
-                            BucketName,
-                            ObjectName,
-                            FilePath.FullName,
-                            bytesTransferred => progressReporter.UpdateProgress(bytesTransferred));
-
-                        var completionTime = DateTime.UtcNow;
-
-                        // Complete progress reporting
-                        progressReporter.Complete();
-
-                        MinIOLogger.WriteVerbose(this,
-                            "Successfully downloaded object '{0}' from bucket '{1}' to '{2}'",
-                            ObjectName, BucketName, FilePath.FullName);
-
-                        // Refresh file info and create download result with timing information
-                        FilePath.Refresh();
-                        var downloadResult = new MinIODownloadResult(FilePath, BucketName, ObjectName, startTime, completionTime);
-                        WriteObject(downloadResult);
-                    }
-#pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in throw
-                    catch (Exception ex)
-                    {
-                        progressReporter.Complete();
-                        throw;
-                    }
-#pragma warning restore CS0168
-
-                }, $"Bucket: {BucketName}, Object: {ObjectName}, File: {FilePath.FullName}");
-            }
-        }
-
-        /// <summary>
-        /// Validates and prepares the file path for download
-        /// </summary>
-        private void ValidateAndPrepareFilePath()
-        {
-            if (FilePath == null)
+            // Validate local path
+            if (string.IsNullOrWhiteSpace(LocalPath))
             {
                 ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException("FilePath cannot be null"),
-                    "InvalidFilePath",
+                    new ArgumentException("Local path cannot be null or empty"),
+                    "InvalidLocalPath",
                     ErrorCategory.InvalidArgument,
-                    FilePath));
+                    LocalPath));
             }
 
             // Check if file already exists
-            if (FilePath!.Exists && !Force.IsPresent)
-            {
-                WriteError(new ErrorRecord(
-                    new InvalidOperationException($"File '{FilePath.FullName}' already exists. Use -Force to overwrite."),
-                    "FileAlreadyExists",
-                    ErrorCategory.ResourceExists,
-                    FilePath));
-                return;
-            }
-
-            // Ensure the directory exists
-            var directory = FilePath.Directory;
-            if (directory != null && !directory.Exists)
-            {
-                try
-                {
-                    directory.Create();
-                    MinIOLogger.WriteVerbose(this, "Created directory: {0}", directory.FullName);
-                }
-                catch (Exception ex)
-                {
-                    ThrowTerminatingError(new ErrorRecord(
-                        new InvalidOperationException($"Cannot create directory '{directory.FullName}': {ex.Message}", ex),
-                        "DirectoryCreationFailed",
-                        ErrorCategory.WriteError,
-                        directory));
-                }
-            }
-
-            // Check if we can write to the target location
-            try
-            {
-                var testFile = Path.Combine(FilePath.DirectoryName ?? ".", $".psminiotest_{Guid.NewGuid():N}");
-                using (var testStream = File.Create(testFile))
-                {
-                    testStream.WriteByte(0);
-                }
-                File.Delete(testFile);
-            }
-            catch (Exception ex)
+            if (File.Exists(LocalPath) && !Force.IsPresent)
             {
                 ThrowTerminatingError(new ErrorRecord(
-                    new InvalidOperationException($"Cannot write to location '{FilePath.FullName}': {ex.Message}", ex),
-                    "LocationNotWritable",
-                    ErrorCategory.PermissionDenied,
-                    FilePath));
+                    new InvalidOperationException($"File already exists: {LocalPath}. Use -Force to overwrite."),
+                    "FileAlreadyExists",
+                    ErrorCategory.ResourceExists,
+                    LocalPath));
             }
-        }
 
-        /// <summary>
-        /// Gets information about the object to be downloaded
-        /// </summary>
-        /// <returns>Object information or null if not found</returns>
-        private Models.MinIOObjectInfo? GetObjectInfo()
-        {
-            try
+            if (ShouldProcess($"{BucketName}/{ObjectName}", "Download object"))
             {
-                var objects = Client.ListObjects(BucketName, ObjectName, false);
-                return objects.FirstOrDefault(obj => 
-                    string.Equals(obj.Name, ObjectName, StringComparison.Ordinal));
-            }
-            catch (Exception ex)
-            {
-                MinIOLogger.WriteWarning(this, 
-                    "Could not retrieve object information for '{0}': {1}", ObjectName, ex.Message);
-                return null;
+                var result = ExecuteOperation("DownloadObject", () =>
+                {
+                    WriteVerboseMessage("Downloading object '{0}' from bucket '{1}' to '{2}'", 
+                        ObjectName, BucketName, LocalPath);
+
+                    // Create download result
+                    var downloadResult = new MinIODownloadResult(BucketName, ObjectName, 0)
+                    {
+                        TargetFilePath = LocalPath
+                    };
+                    downloadResult.MarkStarted();
+
+                    try
+                    {
+                        // Check if bucket exists
+                        if (!S3Client.BucketExists(BucketName))
+                        {
+                            throw new InvalidOperationException($"Bucket '{BucketName}' does not exist");
+                        }
+
+                        // Create directory if needed
+                        var directory = Path.GetDirectoryName(LocalPath);
+                        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                        {
+                            if (CreateDirectories.IsPresent)
+                            {
+                                WriteVerboseMessage("Creating directory: {0}", directory);
+                                Directory.CreateDirectory(directory);
+                            }
+                            else
+                            {
+                                throw new DirectoryNotFoundException($"Directory does not exist: {directory}. Use -CreateDirectories to create it.");
+                            }
+                        }
+
+                        // Track progress
+                        long lastReportedBytes = 0;
+                        var startTime = DateTime.UtcNow;
+
+                        // Download the object
+                        using (var fileStream = new FileStream(LocalPath, FileMode.Create, FileAccess.Write))
+                        {
+                            var bytesDownloaded = S3Client.GetObject(
+                                BucketName,
+                                ObjectName,
+                                fileStream,
+                                bytesTransferred =>
+                                {
+                                    downloadResult.BytesTransferred = bytesTransferred;
+                                    
+                                    // Report progress every 1MB or at completion
+                                    if (bytesTransferred - lastReportedBytes >= 1024 * 1024 || 
+                                        (downloadResult.TotalSize > 0 && bytesTransferred >= downloadResult.TotalSize))
+                                    {
+                                        var elapsed = DateTime.UtcNow - startTime;
+                                        var speed = elapsed.TotalSeconds > 0 ? bytesTransferred / elapsed.TotalSeconds : 0;
+                                        var percentage = downloadResult.TotalSize > 0 ? 
+                                            (double)bytesTransferred / downloadResult.TotalSize * 100 : 0;
+
+                                        WriteVerboseMessage("Download progress: {0:F1}% ({1}/{2}) at {3}",
+                                            percentage,
+                                            SizeFormatter.FormatBytes(bytesTransferred),
+                                            downloadResult.TotalSize > 0 ? SizeFormatter.FormatBytes(downloadResult.TotalSize) : "Unknown",
+                                            SizeFormatter.FormatSpeed(speed));
+
+                                        lastReportedBytes = bytesTransferred;
+                                    }
+                                });
+
+                            downloadResult.TotalSize = bytesDownloaded;
+                            downloadResult.BytesTransferred = bytesDownloaded;
+                        }
+
+                        downloadResult.MarkCompleted();
+
+                        var duration = downloadResult.Duration ?? TimeSpan.Zero;
+                        var averageSpeed = downloadResult.AverageSpeed ?? 0;
+
+                        WriteVerboseMessage("Download completed: {0} in {1} at average speed of {2}",
+                            SizeFormatter.FormatBytes(downloadResult.BytesTransferred),
+                            SizeFormatter.FormatDuration(duration),
+                            SizeFormatter.FormatSpeed(averageSpeed));
+
+                        // Set file timestamps if available
+                        try
+                        {
+                            var fileInfo = new FileInfo(LocalPath);
+                            if (downloadResult.LastModified.HasValue)
+                            {
+                                fileInfo.LastWriteTimeUtc = downloadResult.LastModified.Value;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            WriteVerboseMessage("Could not set file timestamps: {0}", ex.Message);
+                        }
+
+                        return downloadResult;
+                    }
+                    catch (Exception ex)
+                    {
+                        downloadResult.MarkFailed(ex.Message);
+                        throw;
+                    }
+                }, $"Bucket: {BucketName}, Object: {ObjectName}, LocalPath: {LocalPath}");
+
+                // Return result if requested
+                if (PassThru.IsPresent)
+                {
+                    WriteObject(result);
+                }
+                else
+                {
+                    WriteVerboseMessage("Successfully downloaded object '{0}' from bucket '{1}' to '{2}'", 
+                        ObjectName, BucketName, LocalPath);
+                }
             }
         }
     }

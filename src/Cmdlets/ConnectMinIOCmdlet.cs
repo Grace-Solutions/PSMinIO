@@ -1,6 +1,6 @@
 using System;
 using System.Management.Automation;
-using PSMinIO.Models;
+using PSMinIO.Core;
 using PSMinIO.Utils;
 
 namespace PSMinIO.Cmdlets
@@ -37,7 +37,7 @@ namespace PSMinIO.Cmdlets
         public string SecretKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// Region for bucket operations (default: us-east-1)
+        /// Optional region for bucket operations (default: us-east-1)
         /// </summary>
         [Parameter]
         [ValidateNotNullOrEmpty]
@@ -51,40 +51,65 @@ namespace PSMinIO.Cmdlets
         public int TimeoutSeconds { get; set; } = 30;
 
         /// <summary>
-        /// Test the connection after establishing it
+        /// Skip SSL certificate validation (for development/self-signed certificates)
         /// </summary>
         [Parameter]
-        public SwitchParameter TestConnection { get; set; }
+        public SwitchParameter SkipCertificateValidation { get; set; }
 
         /// <summary>
-        /// Store the connection in a session variable for reuse (default: MinIOConnection)
+        /// Maximum number of concurrent connections (default: 10)
+        /// </summary>
+        [Parameter]
+        [ValidateRange(1, 100)]
+        public int MaxConnections { get; set; } = 10;
+
+        /// <summary>
+        /// Default chunk size for multipart uploads in MB (default: 5)
+        /// </summary>
+        [Parameter]
+        [ValidateRange(1, 1024)]
+        public int DefaultChunkSizeMB { get; set; } = 5;
+
+        /// <summary>
+        /// Maximum retry attempts for failed operations (default: 3)
+        /// </summary>
+        [Parameter]
+        [ValidateRange(0, 10)]
+        public int MaxRetries { get; set; } = 3;
+
+        /// <summary>
+        /// Name of session variable to store the connection (default: MinIOConnection)
         /// </summary>
         [Parameter]
         [ValidateNotNullOrEmpty]
         public string SessionVariable { get; set; } = "MinIOConnection";
 
         /// <summary>
-        /// Skip SSL certificate validation (use with caution)
+        /// Test the connection after establishing it
         /// </summary>
         [Parameter]
-        public SwitchParameter SkipCertificateValidation { get; set; }
+        public SwitchParameter TestConnection { get; set; }
+
+        /// <summary>
+        /// Return the connection object instead of storing it in session variable
+        /// </summary>
+        [Parameter]
+        public SwitchParameter PassThru { get; set; }
 
         /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
-            // Extract connection details from URI
-            var useSSL = Endpoint.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+            // Extract endpoint components
             var endpointHost = $"{Endpoint.Host}:{Endpoint.Port}";
+            var useSSL = Endpoint.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
 
             if (ShouldProcess($"MinIO Server: {Endpoint}", $"Establish connection"))
             {
                 try
                 {
-                    MinIOLogger.WriteVerbose(this,
-                        "Connecting to MinIO - Endpoint: {0}, UseSSL: {1}, Region: {2}, Timeout: {3}s, SkipCertValidation: {4}",
-                        endpointHost, useSSL, Region, TimeoutSeconds, SkipCertificateValidation.IsPresent);
+                    MinIOLogger.LogConnection(this, endpointHost, useSSL, Region, TimeoutSeconds);
 
                     // Show warning when certificate validation is skipped
                     if (SkipCertificateValidation.IsPresent)
@@ -100,50 +125,53 @@ namespace PSMinIO.Cmdlets
                         useSSL,
                         Region,
                         TimeoutSeconds,
-                        SkipCertificateValidation.IsPresent);
+                        SkipCertificateValidation.IsPresent)
+                    {
+                        MaxConnections = MaxConnections,
+                        DefaultChunkSize = DefaultChunkSizeMB * 1024 * 1024, // Convert MB to bytes
+                        MaxRetries = MaxRetries
+                    };
+
+                    // Validate configuration
+                    if (!configuration.IsValid)
+                    {
+                        var errors = string.Join(", ", configuration.GetValidationErrors());
+                        throw new ArgumentException($"Invalid configuration: {errors}");
+                    }
 
                     // Create connection
                     var connection = new MinIOConnection(configuration);
 
-                    MinIOLogger.WriteVerbose(this, "MinIO connection created successfully");
-
                     // Test connection if requested
                     if (TestConnection.IsPresent)
                     {
-                        MinIOLogger.WriteVerbose(this, "Testing MinIO connection...");
+                        WriteVerboseMessage("Testing connection by listing buckets...");
                         
-                        var testResult = connection.TestConnection();
-                        
-                        if (testResult.Success)
+                        if (!connection.TestConnection())
                         {
-                            MinIOLogger.WriteVerbose(this, 
-                                "Connection test successful - found {0} buckets in {1}ms", 
-                                testResult.BucketCount ?? 0, 
-                                testResult.ResponseTime?.TotalMilliseconds ?? 0);
+                            throw new InvalidOperationException("Connection test failed. Please verify your credentials and endpoint.");
+                        }
 
-                            WriteInformation(new InformationRecord(
-                                $"Connection test successful. Found {testResult.BucketCount ?? 0} buckets.", 
-                                "ConnectionTest"));
-                        }
-                        else
-                        {
-                            WriteWarning($"Connection test failed: {testResult.Message}");
-                            MinIOLogger.WriteVerbose(this, "Connection test failed: {0}", testResult.Message);
-                        }
+                        WriteVerboseMessage("Connection test successful");
                     }
 
-                    // Store in session variable if requested
-                    if (!string.IsNullOrWhiteSpace(SessionVariable))
+                    // Store in session variable unless PassThru is specified
+                    if (!PassThru.IsPresent)
                     {
-                        // Set variable in session state
                         SessionState.PSVariable.Set(SessionVariable, connection);
-                        MinIOLogger.WriteVerbose(this, "Connection stored in session variable: {0}", SessionVariable!);
+                        WriteVerboseMessage("Connection stored in session variable: {0}", SessionVariable);
                     }
 
-                    // Return the connection object
-                    WriteObject(connection);
-
-                    MinIOLogger.WriteVerbose(this, "Connect-MinIO completed successfully");
+                    // Output connection object if PassThru is specified or if not storing in session
+                    if (PassThru.IsPresent)
+                    {
+                        WriteObject(connection);
+                    }
+                    else
+                    {
+                        WriteVerboseMessage("Connected to MinIO server: {0}", endpointHost);
+                        WriteVerboseMessage("Use Get-MinIOBucket or other MinIO cmdlets to interact with the server");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -152,35 +180,20 @@ namespace PSMinIO.Cmdlets
                         "ConnectionFailed",
                         ErrorCategory.ConnectionError,
                         Endpoint);
-                    
-                    WriteError(errorRecord);
+
+                    ThrowTerminatingError(errorRecord);
                 }
             }
         }
 
         /// <summary>
-        /// Begins processing - validate parameters
+        /// Writes verbose output with consistent formatting
         /// </summary>
-        protected override void BeginProcessing()
+        /// <param name="message">Message to write</param>
+        /// <param name="args">Format arguments</param>
+        private void WriteVerboseMessage(string message, params object[] args)
         {
-            base.BeginProcessing();
-
-            // Validate URI scheme
-            if (!Endpoint.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) &&
-                !Endpoint.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-            {
-                ThrowTerminatingError(new ErrorRecord(
-                    new ArgumentException($"Invalid URI scheme '{Endpoint.Scheme}'. Only 'http' and 'https' are supported."),
-                    "InvalidUriScheme",
-                    ErrorCategory.InvalidArgument,
-                    Endpoint));
-            }
-
-            // Validate port is specified
-            if (Endpoint.Port == -1)
-            {
-                WriteWarning($"No port specified in URI '{Endpoint}'. MinIO typically uses port 9000.");
-            }
+            MinIOLogger.WriteVerbose(this, message, args);
         }
     }
 }

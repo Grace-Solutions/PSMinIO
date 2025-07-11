@@ -3,7 +3,7 @@
     RootModule = 'bin\PSMinIO.dll'
 
     # Version number of this module.
-    ModuleVersion = '2.0.0'
+    ModuleVersion = '2025.07.11.1151'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -119,9 +119,9 @@
 
             # ReleaseNotes of this module
             ReleaseNotes = @'
-## Version 2.0.0 - Major Enhancement Release
+## Version 2025.07.11.1151 - Enhanced Release
 
-### Major Features Added
+### Major Features
 - Complete Get-MinIOObject cmdlet with advanced filtering, sorting, and pagination
 - Enhanced directory management with automatic nested structure creation
 - Advanced chunked operations with configurable chunk sizes and multi-layer progress tracking
@@ -135,7 +135,7 @@
 
 ### Documentation and Examples
 - Updated README.md and comprehensive USAGE.md documentation
-- Created 6 detailed example scripts covering all use cases
+- Created comprehensive example scripts in scripts/examples/ directory
 - Added enterprise automation patterns and best practices
 - Professional logging with no Write-Host usage
 
@@ -143,7 +143,7 @@
 - Thread-safe operations for chunked transfers
 - Enhanced error handling and resource management
 - Performance optimization with intelligent defaults
-- Repository cleanup and organization
+- Centralized version management system
 
 This release provides enterprise-grade functionality with professional documentation and comprehensive examples.
 '@
@@ -165,3 +165,8 @@ This release provides enterprise-grade functionality with professional documenta
     # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
     # DefaultCommandPrefix = ''
 }
+
+
+
+
+

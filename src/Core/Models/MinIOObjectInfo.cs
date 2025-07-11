@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using PSMinIO.Utils;
 
-namespace PSMinIO.Models
+namespace PSMinIO.Core.Models
 {
     /// <summary>
     /// Represents information about a MinIO object
@@ -132,64 +132,6 @@ namespace PSMinIO.Models
         }
 
         /// <summary>
-        /// Creates a MinIOObjectInfo from a Minio.DataModel.Item
-        /// </summary>
-        /// <param name="item">Minio item object</param>
-        /// <param name="bucketName">Name of the bucket containing the object</param>
-        /// <returns>MinIOObjectInfo instance</returns>
-        public static MinIOObjectInfo FromMinioItem(Minio.DataModel.Item item, string bucketName)
-        {
-            if (item == null)
-                throw new ArgumentNullException(nameof(item));
-
-            var objectInfo = new MinIOObjectInfo
-            {
-                Name = item.Key ?? string.Empty,
-                Size = (long)item.Size,
-                LastModified = item.LastModifiedDateTime ?? DateTime.MinValue,
-                ETag = item.ETag ?? string.Empty,
-                BucketName = bucketName ?? string.Empty,
-                StorageClass = string.Empty // StorageClass not available in MinIO 5.0.0 Item
-            };
-
-            // Try to extract version information if available
-            // Note: The MinIO .NET SDK Item object may have version properties
-            try
-            {
-                // Use reflection to check for version properties that might exist
-                var itemType = item.GetType();
-
-                var versionIdProperty = itemType.GetProperty("VersionId");
-                if (versionIdProperty != null)
-                {
-                    objectInfo.VersionId = versionIdProperty.GetValue(item)?.ToString();
-                }
-
-                var isLatestProperty = itemType.GetProperty("IsLatest");
-                if (isLatestProperty != null && isLatestProperty.GetValue(item) is bool isLatest)
-                {
-                    objectInfo.IsLatestVersion = isLatest;
-                }
-
-                var isDeleteMarkerProperty = itemType.GetProperty("IsDeleteMarker");
-                if (isDeleteMarkerProperty != null && isDeleteMarkerProperty.GetValue(item) is bool isDeleteMarker)
-                {
-                    objectInfo.IsDeleteMarker = isDeleteMarker;
-                }
-            }
-            catch
-            {
-                // If reflection fails, just continue without version information
-                // This ensures compatibility even if the SDK doesn't have these properties
-            }
-
-            // Metadata not available in MinIO 5.0.0 Item class
-            // objectInfo.Metadata remains empty
-
-            return objectInfo;
-        }
-
-        /// <summary>
         /// Gets the file extension of the object
         /// </summary>
         public string GetFileExtension()
@@ -245,7 +187,7 @@ namespace PSMinIO.Models
         /// </summary>
         public override string ToString()
         {
-            return $"Object: {Name} ({Size} bytes, Modified: {LastModified:yyyy-MM-dd HH:mm:ss})";
+            return $"Object: {Name} ({SizeFormatter.FormatBytes(Size)}, Modified: {LastModified:yyyy-MM-dd HH:mm:ss})";
         }
 
         /// <summary>
