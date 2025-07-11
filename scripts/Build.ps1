@@ -48,10 +48,11 @@ param(
 # Set error action preference
 $ErrorActionPreference = 'Stop'
 
-# Get script directory
+# Get script directory and project root
 $ScriptRoot = $PSScriptRoot
-$ProjectFile = Join-Path $ScriptRoot 'PSMinIO.csproj'
-$ModuleManifest = Join-Path $ScriptRoot 'PSMinIO.psd1'
+$ProjectRoot = Split-Path $ScriptRoot -Parent
+$ProjectFile = Join-Path $ProjectRoot 'PSMinIO.csproj'
+$ModuleManifest = Join-Path $ProjectRoot 'Module\PSMinIO\PSMinIO.psd1'
 
 Write-Host "=== PSMinIO Build Script ===" -ForegroundColor Cyan
 Write-Host "Configuration: $Configuration" -ForegroundColor Gray
@@ -72,24 +73,35 @@ function Test-Command {
 }
 
 try {
+    # Update version information first
+    Write-Status "Updating version information..."
+    $updateVersionScript = Join-Path $ScriptRoot "Update-Version.ps1"
+    if (Test-Path $updateVersionScript) {
+        & $updateVersionScript
+        Write-Host "  ✓ Version information updated" -ForegroundColor Green
+    } else {
+        Write-Warning "Update-Version.ps1 not found, skipping version update"
+    }
+    Write-Host ""
+
     # Check prerequisites
     Write-Status "Checking prerequisites..."
-    
+
     if (!(Test-Command 'dotnet')) {
         throw ".NET SDK is required but not found. Please install .NET SDK 6.0 or later."
     }
-    
+
     $dotnetVersion = dotnet --version
     Write-Host "  .NET SDK Version: $dotnetVersion" -ForegroundColor Green
-    
+
     if (!(Test-Path $ProjectFile)) {
         throw "Project file not found: $ProjectFile"
     }
-    
+
     if (!(Test-Path $ModuleManifest)) {
         throw "Module manifest not found: $ModuleManifest"
     }
-    
+
     Write-Host "  ✓ Prerequisites check passed" -ForegroundColor Green
     Write-Host ""
     

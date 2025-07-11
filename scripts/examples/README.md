@@ -6,7 +6,7 @@ This directory contains comprehensive examples demonstrating various PSMinIO cap
 
 Before running these examples:
 
-1. **Install PSMinIO**: Import the module using `Import-Module ..\Module\PSMinIO\PSMinIO.psd1`
+1. **Install PSMinIO**: Import the module using `Import-Module ..\..\Module\PSMinIO\PSMinIO.psd1`
 2. **MinIO Server**: Have access to a MinIO server or compatible S3 service
 3. **Credentials**: Update the connection details in each script with your actual values:
    ```powershell

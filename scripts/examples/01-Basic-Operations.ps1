@@ -2,7 +2,7 @@
 # This script demonstrates fundamental MinIO operations using PSMinIO
 
 # Import the module
-Import-Module ..\Module\PSMinIO\PSMinIO.psd1
+Import-Module ..\..\Module\PSMinIO\PSMinIO.psd1
 
 # Example connection details (replace with your actual values)
 $endpoint = "https://minio.example.com"

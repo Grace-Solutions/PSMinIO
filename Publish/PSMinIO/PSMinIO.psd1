@@ -3,7 +3,7 @@
     RootModule = 'bin\PSMinIO.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.07.10.1200'
+    ModuleVersion = '2.0.0'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -12,16 +12,16 @@
     GUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 
     # Author of this module
-    Author = 'PSMinIO Team'
+    Author = 'Grace Solutions'
 
     # Company or vendor of this module
-    CompanyName = 'PSMinIO'
+    CompanyName = 'Grace Solutions'
 
     # Copyright statement for this module
-    Copyright = '(c) 2025 PSMinIO Team. All rights reserved.'
+    Copyright = '(c) 2025 Grace Solutions. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'A PowerShell module for MinIO object storage operations built on the Minio .NET SDK'
+    Description = 'A comprehensive PowerShell module for MinIO object storage operations with enterprise-grade features including chunked transfers, advanced object listing, directory management, and performance monitoring. Built on the official Minio .NET SDK.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -106,19 +106,47 @@
     PrivateData = @{
         PSData = @{
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags = @('MinIO', 'ObjectStorage', 'S3', 'Cloud', 'Storage', 'Bucket', 'Object')
+            Tags = @('MinIO', 'ObjectStorage', 'S3', 'Cloud', 'Storage', 'Bucket', 'Object', 'Enterprise', 'Chunked', 'Performance', 'Monitoring', 'Automation', 'Backup', 'AWS', 'Compatible')
 
             # A URL to the license for this module.
-            LicenseUri = 'https://github.com/PSMinIO/PSMinIO/blob/main/LICENSE'
+            LicenseUri = 'https://github.com/Grace-Solutions/PSMinIO/blob/main/LICENSE'
 
             # A URL to the main website for this project.
-            ProjectUri = 'https://github.com/PSMinIO/PSMinIO'
+            ProjectUri = 'https://github.com/Grace-Solutions/PSMinIO'
 
             # A URL to an icon representing this module.
             # IconUri = ''
 
             # ReleaseNotes of this module
-            ReleaseNotes = 'Initial release of PSMinIO module with comprehensive MinIO object storage operations support.'
+            ReleaseNotes = @'
+## Version 2.0.0 - Major Enhancement Release
+
+### Major Features Added
+- Complete Get-MinIOObject cmdlet with advanced filtering, sorting, and pagination
+- Enhanced directory management with automatic nested structure creation
+- Advanced chunked operations with configurable chunk sizes and multi-layer progress tracking
+- Comprehensive timing and performance metrics for all operations
+- Enterprise-grade automation examples and monitoring capabilities
+
+### Issues Fixed
+- Fixed directory creation warnings (now clean verbose logging)
+- Implemented missing Get-MinIOObject cmdlet with full functionality
+- Resolved threading and progress reporting issues
+
+### Documentation and Examples
+- Updated README.md and comprehensive USAGE.md documentation
+- Created 6 detailed example scripts covering all use cases
+- Added enterprise automation patterns and best practices
+- Professional logging with no Write-Host usage
+
+### Technical Improvements
+- Thread-safe operations for chunked transfers
+- Enhanced error handling and resource management
+- Performance optimization with intelligent defaults
+- Repository cleanup and organization
+
+This release provides enterprise-grade functionality with professional documentation and comprehensive examples.
+'@
 
             # Prerelease string of this module
             # Prerelease = ''

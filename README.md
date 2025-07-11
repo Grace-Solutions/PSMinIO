@@ -17,14 +17,23 @@ A comprehensive PowerShell module for MinIO object storage operations, built on 
 
 ## Installation
 
+### From PowerShell Gallery
+```powershell
+# Install from PowerShell Gallery
+Install-Module -Name PSMinIO -Scope CurrentUser
+
+# Import the module
+Import-Module PSMinIO
+```
+
 ### From Source
 ```powershell
 # Clone the repository
-git clone https://github.com/yourusername/PSMinIO.git
+git clone https://github.com/Grace-Solutions/PSMinIO.git
 cd PSMinIO
 
-# Build the module
-dotnet build PSMinIO.csproj --configuration Release
+# Build the module (automatically updates version)
+.\scripts\Build.ps1
 
 # Import the module
 Import-Module .\Module\PSMinIO\PSMinIO.psd1
@@ -124,7 +133,7 @@ All operations provide detailed timing information:
 
 ## Examples
 
-See the [examples](./examples/) directory for comprehensive usage examples:
+See the [scripts/examples](./scripts/examples/) directory for comprehensive usage examples:
 - **Basic Operations**: Connection, bucket management, simple uploads/downloads
 - **Advanced Scenarios**: Chunked transfers, directory management, bulk operations
 - **Enterprise Patterns**: Policy management, monitoring, and automation scripts

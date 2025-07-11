@@ -4,15 +4,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>PSMinIO</AssemblyName>
     <RootNamespace>PSMinIO</RootNamespace>
-    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <AssemblyTitle>PSMinIO PowerShell Module</AssemblyTitle>
-    <AssemblyDescription>A PowerShell module for MinIO object storage operations</AssemblyDescription>
-    <AssemblyCompany>PSMinIO</AssemblyCompany>
-    <AssemblyProduct>PSMinIO</AssemblyProduct>
-    <AssemblyCopyright>Copyright © 2025</AssemblyCopyright>
-    <AssemblyVersion>2025.07.10.1200</AssemblyVersion>
-    <FileVersion>2025.07.10.1200</FileVersion>
-    <InformationalVersion>2025.07.10.1200</InformationalVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -43,7 +35,7 @@
 
 
   <ItemGroup>
-    <None Include="PSMinIO.psd1">
+    <None Include="Module\PSMinIO\PSMinIO.psd1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Module\PSMinIO\types\*.ps1xml">
@@ -51,13 +43,6 @@
     </None>
   </ItemGroup>
 
-  <Target Name="CopyModuleFiles" AfterTargets="Build">
-    <ItemGroup>
-      <ModuleFiles Include="$(OutputPath)\PSMinIO.dll" />
-      <ModuleFiles Include="$(OutputPath)\PSMinIO.pdb" />
-      <ModuleFiles Include="PSMinIO.psd1" />
-    </ItemGroup>
-    <Copy SourceFiles="@(ModuleFiles)" DestinationFolder="Module\PSMinIO\bin\" />
-  </Target>
+  <!-- Removed automatic copy to avoid file locking issues - use scripts/Quick-Build.ps1 instead -->
 
 </Project>

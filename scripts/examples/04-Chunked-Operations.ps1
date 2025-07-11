@@ -2,7 +2,7 @@
 # Demonstrates chunked uploads and downloads for large files with progress tracking
 
 # Import the module
-Import-Module ..\Module\PSMinIO\PSMinIO.psd1
+Import-Module ..\..\Module\PSMinIO\PSMinIO.psd1
 
 # Connection details (replace with your actual values)
 $endpoint = "https://minio.example.com"
