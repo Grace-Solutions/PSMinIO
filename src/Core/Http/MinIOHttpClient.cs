@@ -79,8 +79,8 @@ namespace PSMinIO.Core.Http
 
             try
             {
-                // Execute the request synchronously
-                var response = _httpClient.SendAsync(request).GetAwaiter().GetResult();
+                // Execute the request synchronously using Task.Run to avoid threading issues
+                var response = Task.Run(async () => await _httpClient.SendAsync(request)).GetAwaiter().GetResult();
                 return response;
             }
             catch (Exception ex)

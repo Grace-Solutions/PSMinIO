@@ -120,7 +120,6 @@ namespace PSMinIO.Cmdlets
                         }
 
                         // Track progress
-                        long lastReportedBytes = 0;
                         var startTime = DateTime.UtcNow;
 
                         // Download the object
@@ -132,25 +131,8 @@ namespace PSMinIO.Cmdlets
                                 fileStream,
                                 bytesTransferred =>
                                 {
+                                    // Only update the result object - no PowerShell calls from background thread
                                     downloadResult.BytesTransferred = bytesTransferred;
-                                    
-                                    // Report progress every 1MB or at completion
-                                    if (bytesTransferred - lastReportedBytes >= 1024 * 1024 || 
-                                        (downloadResult.TotalSize > 0 && bytesTransferred >= downloadResult.TotalSize))
-                                    {
-                                        var elapsed = DateTime.UtcNow - startTime;
-                                        var speed = elapsed.TotalSeconds > 0 ? bytesTransferred / elapsed.TotalSeconds : 0;
-                                        var percentage = downloadResult.TotalSize > 0 ? 
-                                            (double)bytesTransferred / downloadResult.TotalSize * 100 : 0;
-
-                                        WriteVerboseMessage("Download progress: {0:F1}% ({1}/{2}) at {3}",
-                                            percentage,
-                                            SizeFormatter.FormatBytes(bytesTransferred),
-                                            downloadResult.TotalSize > 0 ? SizeFormatter.FormatBytes(downloadResult.TotalSize) : "Unknown",
-                                            SizeFormatter.FormatSpeed(speed));
-
-                                        lastReportedBytes = bytesTransferred;
-                                    }
                                 });
 
                             downloadResult.TotalSize = bytesDownloaded;
@@ -161,6 +143,15 @@ namespace PSMinIO.Cmdlets
 
                         var duration = downloadResult.Duration ?? TimeSpan.Zero;
                         var averageSpeed = downloadResult.AverageSpeed ?? 0;
+
+                        // Report final progress from main thread
+                        var percentage = downloadResult.TotalSize > 0 ?
+                            (double)downloadResult.BytesTransferred / downloadResult.TotalSize * 100 : 100;
+                        WriteVerboseMessage("Download progress: {0:F1}% ({1}/{2}) at {3}",
+                            percentage,
+                            SizeFormatter.FormatBytes(downloadResult.BytesTransferred),
+                            downloadResult.TotalSize > 0 ? SizeFormatter.FormatBytes(downloadResult.TotalSize) : "Unknown",
+                            SizeFormatter.FormatSpeed(averageSpeed));
 
                         WriteVerboseMessage("Download completed: {0} in {1} at average speed of {2}",
                             SizeFormatter.FormatBytes(downloadResult.BytesTransferred),

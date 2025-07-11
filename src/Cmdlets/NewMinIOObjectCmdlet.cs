@@ -147,7 +147,6 @@ namespace PSMinIO.Cmdlets
                         // Track progress
                         var fileSize = File.Length;
                         var startTime = DateTime.UtcNow;
-                        long lastReportedBytes = 0;
 
                         WriteVerboseMessage("Starting upload of {0}", SizeFormatter.FormatBytes(fileSize));
 
@@ -163,23 +162,8 @@ namespace PSMinIO.Cmdlets
                                 metadata,
                                 bytesTransferred =>
                                 {
+                                    // Only update the result object - no PowerShell calls from background thread
                                     uploadResult.BytesTransferred = bytesTransferred;
-
-                                    // Report progress every 1MB or at completion
-                                    if (bytesTransferred - lastReportedBytes >= 1024 * 1024 || bytesTransferred == fileSize)
-                                    {
-                                        var elapsed = DateTime.UtcNow - startTime;
-                                        var speed = elapsed.TotalSeconds > 0 ? bytesTransferred / elapsed.TotalSeconds : 0;
-                                        var percentage = fileSize > 0 ? (double)bytesTransferred / fileSize * 100 : 100;
-
-                                        WriteVerboseMessage("Upload progress: {0:F1}% ({1}/{2}) at {3}",
-                                            percentage,
-                                            SizeFormatter.FormatBytes(bytesTransferred),
-                                            SizeFormatter.FormatBytes(fileSize),
-                                            SizeFormatter.FormatSpeed(speed));
-
-                                        lastReportedBytes = bytesTransferred;
-                                    }
                                 });
                         }
 
@@ -188,6 +172,14 @@ namespace PSMinIO.Cmdlets
 
                         var duration = uploadResult.Duration ?? TimeSpan.Zero;
                         var averageSpeed = uploadResult.AverageSpeed ?? 0;
+
+                        // Report final progress from main thread
+                        var percentage = fileSize > 0 ? (double)uploadResult.BytesTransferred / fileSize * 100 : 100;
+                        WriteVerboseMessage("Upload progress: {0:F1}% ({1}/{2}) at {3}",
+                            percentage,
+                            SizeFormatter.FormatBytes(uploadResult.BytesTransferred),
+                            SizeFormatter.FormatBytes(fileSize),
+                            SizeFormatter.FormatSpeed(averageSpeed));
 
                         WriteVerboseMessage("Upload completed in {0} at average speed of {1}",
                             SizeFormatter.FormatDuration(duration),

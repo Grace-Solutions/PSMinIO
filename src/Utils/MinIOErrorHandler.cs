@@ -74,13 +74,21 @@ namespace PSMinIO.Utils
 
             // Create detailed error information
             var errorDetails = CreateDetailedErrorInfo(exception, operationName, operationDetails);
-            
+
             // Log detailed error information
             LogDetailedError(cmdlet, errorDetails);
-            
+
             // Create and write PowerShell error record
-            var errorRecord = CreateErrorRecord(exception, operationName, errorCategory, targetObject);
-            cmdlet.WriteError(errorRecord);
+            try
+            {
+                var errorRecord = CreateErrorRecord(exception, operationName, errorCategory, targetObject);
+                cmdlet.WriteError(errorRecord);
+            }
+            catch (InvalidOperationException)
+            {
+                // Ignore threading errors - this means we're being called from a background thread
+                // The error details are still captured in the exception
+            }
         }
 
         /// <summary>
@@ -128,27 +136,36 @@ namespace PSMinIO.Utils
 
         /// <summary>
         /// Logs detailed error information using PowerShell's Write-Warning
+        /// Only logs if called from the main PowerShell thread to avoid threading issues
         /// </summary>
         private static void LogDetailedError(PSCmdlet cmdlet, OrderedDictionary errorDetails)
         {
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
-            
-            // Log header
-            cmdlet.WriteWarning($"{timestamp} - ERROR: PSMinIO Operation Failed");
-            
-            // Log each error detail
-            foreach (DictionaryEntry detail in errorDetails)
+            try
             {
-                var key = detail.Key?.ToString() ?? "Unknown";
-                var value = detail.Value?.ToString() ?? "N/A";
-                
-                // Truncate very long values for readability
-                if (value.Length > 200)
+                var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+
+                // Log header
+                cmdlet.WriteWarning($"{timestamp} - ERROR: PSMinIO Operation Failed");
+
+                // Log each error detail
+                foreach (DictionaryEntry detail in errorDetails)
                 {
-                    value = value.Substring(0, 197) + "...";
+                    var key = detail.Key?.ToString() ?? "Unknown";
+                    var value = detail.Value?.ToString() ?? "N/A";
+
+                    // Truncate very long values for readability
+                    if (value.Length > 200)
+                    {
+                        value = value.Substring(0, 197) + "...";
+                    }
+
+                    cmdlet.WriteWarning($"{timestamp} - ERROR: {key}: {value}");
                 }
-                
-                cmdlet.WriteWarning($"{timestamp} - ERROR: {key}: {value}");
+            }
+            catch (InvalidOperationException)
+            {
+                // Ignore threading errors - this means we're being called from a background thread
+                // The error details will still be included in the exception that gets thrown
             }
         }
 
