@@ -317,6 +317,9 @@ namespace PSMinIO.Cmdlets
                     MinIOLogger.WriteVerbose(this, "Uploading file {0}/{1}: {2} -> {3}",
                         i + 1, validFiles.Length, fileInfo.Name, objectName);
 
+                    // Track timing for this file
+                    var startTime = DateTime.UtcNow;
+
                     // Upload the file
                     var etag = Client.UploadFile(
                         BucketName,
@@ -328,6 +331,8 @@ namespace PSMinIO.Cmdlets
                             overallProgress.UpdateProgress(totalProcessed + bytesTransferred);
                         });
 
+                    var completionTime = DateTime.UtcNow;
+
                     totalProcessed += fileInfo.Length;
                     overallProgress.UpdateProgress(totalProcessed);
 
@@ -337,7 +342,11 @@ namespace PSMinIO.Cmdlets
                         fileInfo.Length,
                         DateTime.UtcNow,
                         etag,
-                        BucketName);
+                        BucketName)
+                    {
+                        StartTime = startTime,
+                        CompletionTime = completionTime
+                    };
 
                     // Generate presigned URL if requested
                     if (ShowURL.IsPresent)
@@ -473,16 +482,23 @@ namespace PSMinIO.Cmdlets
                     {
                         MinIOLogger.WriteVerbose(this, "Creating bucket directory: {0}", folderPath);
 
-                        // Create the directory by uploading a zero-byte object
-                        using var emptyStream = new MemoryStream();
-                        Client.UploadStream(BucketName, folderPath, emptyStream, "application/x-directory");
-
-                        MinIOLogger.WriteVerbose(this, "Successfully created bucket directory: {0}", folderPath);
+                        try
+                        {
+                            // Create the directory using the dedicated method
+                            Client.CreateDirectory(BucketName, folderPath);
+                            MinIOLogger.WriteVerbose(this, "Successfully created bucket directory: {0}", folderPath);
+                        }
+                        catch (Exception createEx)
+                        {
+                            // Directory creation failed, but this is not critical since MinIO creates directories implicitly
+                            MinIOLogger.WriteVerbose(this, "Directory creation failed (non-critical): {0} - {1}", folderPath, createEx.Message);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    WriteWarning($"Could not create bucket directory '{folderPath}': {ex.Message}");
+                    // Listing failed, but this is not critical for the upload operation
+                    MinIOLogger.WriteVerbose(this, "Could not check directory existence (non-critical): {0} - {1}", folderPath, ex.Message);
                 }
             }
         }

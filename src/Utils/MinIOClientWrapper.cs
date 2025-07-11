@@ -453,6 +453,48 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
+        /// Creates a directory object in MinIO (zero-byte object with trailing slash)
+        /// </summary>
+        /// <param name="bucketName">Name of the bucket</param>
+        /// <param name="directoryPath">Path of the directory (should end with /)</param>
+        /// <returns>ETag of the created directory object</returns>
+        public string CreateDirectory(string bucketName, string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(bucketName))
+                throw new ArgumentException("Bucket name cannot be null or empty", nameof(bucketName));
+
+            if (string.IsNullOrWhiteSpace(directoryPath))
+                throw new ArgumentException("Directory path cannot be null or empty", nameof(directoryPath));
+
+            // Ensure directory path ends with /
+            if (!directoryPath.EndsWith("/"))
+                directoryPath += "/";
+
+            try
+            {
+                // Use a properly configured empty stream
+                using var emptyStream = new MemoryStream(new byte[0]);
+                emptyStream.Position = 0;
+
+                var args = new PutObjectArgs()
+                    .WithBucket(bucketName)
+                    .WithObject(directoryPath)
+                    .WithStreamData(emptyStream)
+                    .WithObjectSize(0)
+                    .WithContentType("application/x-directory");
+
+                Task.Run(async () =>
+                    await _client.PutObjectAsync(args, CancellationToken)).GetAwaiter().GetResult();
+
+                return ""; // Directory objects don't have meaningful ETags
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to create directory '{directoryPath}' in bucket '{bucketName}': {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
         /// Uploads a stream to MinIO synchronously
         /// </summary>
         /// <param name="bucketName">Name of the bucket</param>
@@ -475,6 +517,12 @@ namespace PSMinIO.Utils
 
             try
             {
+                // Ensure stream is at the beginning
+                if (data.CanSeek)
+                {
+                    data.Position = 0;
+                }
+
                 var args = new PutObjectArgs()
                     .WithBucket(bucketName)
                     .WithObject(objectName)
@@ -586,12 +634,12 @@ namespace PSMinIO.Utils
         /// Uploads a file using chunked transfer with resume capability
         /// </summary>
         /// <param name="transferState">Transfer state for resume functionality</param>
-        /// <param name="progressReporter">Progress reporter for updates</param>
+        /// <param name="progressReporter">Thread-safe progress reporter for updates</param>
         /// <param name="maxRetries">Maximum retry attempts per chunk</param>
         /// <returns>MinIOObjectInfo of uploaded object or null if failed</returns>
         public MinIOObjectInfo? UploadFileChunked(
             ChunkedTransferState transferState,
-            ChunkedCollectionProgressReporter progressReporter,
+            ThreadSafeChunkedProgressReporter progressReporter,
             int maxRetries = 3)
         {
             if (transferState == null)
@@ -705,13 +753,13 @@ namespace PSMinIO.Utils
         /// Downloads a file using chunked transfer with resume capability
         /// </summary>
         /// <param name="transferState">Transfer state for resume functionality</param>
-        /// <param name="progressReporter">Progress reporter for updates</param>
+        /// <param name="progressReporter">Thread-safe progress reporter for updates</param>
         /// <param name="maxRetries">Maximum retry attempts per chunk</param>
         /// <param name="parallelDownloads">Number of parallel chunk downloads</param>
         /// <returns>True if download succeeded, false otherwise</returns>
         public bool DownloadFileChunked(
             ChunkedTransferState transferState,
-            ChunkedSingleFileProgressReporter progressReporter,
+            ThreadSafeChunkedProgressReporter progressReporter,
             int maxRetries = 3,
             int parallelDownloads = 3)
         {
@@ -724,9 +772,11 @@ namespace PSMinIO.Utils
                 using var fileStream = new FileStream(transferState.FilePath, FileMode.Create, FileAccess.Write, FileShare.None);
                 fileStream.SetLength(transferState.TotalSize);
 
-                // Get list of chunks to download
+                // Get list of chunks to download (with safety limit)
                 var chunksToDownload = new List<ChunkInfo>();
-                while (!transferState.IsComplete)
+                var maxChunks = Math.Min(transferState.TotalChunks, 10000); // Safety limit of 10,000 chunks
+
+                for (int i = 0; i < maxChunks && !transferState.IsComplete; i++)
                 {
                     var nextChunk = transferState.GetNextChunk();
                     if (nextChunk == null)
@@ -771,7 +821,7 @@ namespace PSMinIO.Utils
         /// <param name="transferState">Transfer state</param>
         /// <param name="chunk">Chunk to download</param>
         /// <param name="fileStream">Target file stream</param>
-        /// <param name="progressReporter">Progress reporter</param>
+        /// <param name="progressReporter">Thread-safe progress reporter</param>
         /// <param name="maxRetries">Maximum retry attempts</param>
         /// <param name="semaphore">Semaphore for controlling parallelism</param>
         /// <returns>True if chunk downloaded successfully</returns>
@@ -779,7 +829,7 @@ namespace PSMinIO.Utils
             ChunkedTransferState transferState,
             ChunkInfo chunk,
             FileStream fileStream,
-            ChunkedSingleFileProgressReporter progressReporter,
+            ThreadSafeChunkedProgressReporter progressReporter,
             int maxRetries,
             SemaphoreSlim semaphore)
         {
@@ -795,17 +845,36 @@ namespace PSMinIO.Utils
                     {
                         using var chunkStream = new MemoryStream();
 
+                        // Use GetObjectAsync with offset and length for proper chunked download
                         var getArgs = new GetObjectArgs()
                             .WithBucket(transferState.BucketName)
                             .WithObject(transferState.ObjectName)
                             .WithCallbackStream((stream) =>
                             {
-                                // For MinIO 5.0.0, we'll need to implement range requests differently
-                                // For now, let's use the basic GetObject and handle chunking at the stream level
-                                var buffer = new byte[chunk.Size];
-                                stream.Seek(chunk.StartByte, SeekOrigin.Begin);
-                                var bytesRead = stream.Read(buffer, 0, (int)chunk.Size);
-                                chunkStream.Write(buffer, 0, bytesRead);
+                                // Skip to the start position and read only the chunk size
+                                var buffer = new byte[8192]; // 8KB buffer
+                                long totalRead = 0;
+                                long skipBytes = chunk.StartByte;
+
+                                // Skip to start position
+                                while (skipBytes > 0)
+                                {
+                                    var toSkip = (int)Math.Min(skipBytes, buffer.Length);
+                                    var skipped = stream.Read(buffer, 0, toSkip);
+                                    if (skipped == 0) break; // End of stream
+                                    skipBytes -= skipped;
+                                }
+
+                                // Read the chunk data
+                                while (totalRead < chunk.Size)
+                                {
+                                    var toRead = (int)Math.Min(chunk.Size - totalRead, buffer.Length);
+                                    var bytesRead = stream.Read(buffer, 0, toRead);
+                                    if (bytesRead == 0) break; // End of stream
+
+                                    chunkStream.Write(buffer, 0, bytesRead);
+                                    totalRead += bytesRead;
+                                }
                             });
 
                         await _client.GetObjectAsync(getArgs, CancellationToken);

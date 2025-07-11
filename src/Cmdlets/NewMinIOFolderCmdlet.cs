@@ -152,9 +152,8 @@ namespace PSMinIO.Cmdlets
                     {
                         MinIOLogger.WriteVerbose(this, "Creating folder level: {0}", fullFolderPath);
 
-                        // Create the folder by uploading a zero-byte object
-                        using var emptyStream = new MemoryStream();
-                        var etag = Client.UploadStream(BucketName, fullFolderPath, emptyStream, "application/x-directory");
+                        // Create the folder using the dedicated method
+                        var etag = Client.CreateDirectory(BucketName, fullFolderPath);
 
                         var folderInfo = new MinIOObjectInfo(
                             fullFolderPath,

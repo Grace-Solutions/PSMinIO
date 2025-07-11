@@ -323,15 +323,8 @@ namespace PSMinIO.Cmdlets
             // Calculate total size for overall progress
             var totalSize = validFiles.Sum(f => f.Length);
 
-            // Create progress reporter
-            var progressReporter = new ChunkedCollectionProgressReporter(
-                this,
-                validFiles.Length,
-                totalSize,
-                "Uploading",
-                ProgressUpdateInterval);
-
-            var uploadedObjects = new System.Collections.Generic.List<MinIOObjectInfo>();
+            // Create thread-safe result collector
+            var resultCollector = new ThreadSafeResultCollector(this);
 
             for (int i = 0; i < validFiles.Length; i++)
             {
@@ -342,39 +335,47 @@ namespace PSMinIO.Cmdlets
                 {
                     // Calculate chunks for this file
                     var totalChunks = (int)Math.Ceiling((double)fileInfo.Length / ChunkSize);
+
+                    // Create thread-safe progress reporter for this file
+                    var progressReporter = new ThreadSafeChunkedProgressReporter(
+                        this,
+                        fileInfo.Length,
+                        totalChunks,
+                        "Uploading");
+
                     progressReporter.StartNewFile(fileInfo.Name, fileInfo.Length, totalChunks);
+
+                    // Track timing for this file
+                    var startTime = DateTime.UtcNow;
 
                     // Upload file using chunked transfer
                     var uploadedObject = UploadFileChunked(fileInfo, objectName, progressReporter);
 
                     if (uploadedObject != null)
                     {
-                        uploadedObjects.Add(uploadedObject);
+                        // Add timing information
+                        uploadedObject.StartTime = startTime;
+                        uploadedObject.CompletionTime = DateTime.UtcNow;
+
+                        resultCollector.QueueResult(uploadedObject);
                         progressReporter.CompleteFile();
                     }
+
+                    // Process any queued progress updates from the main thread
+                    progressReporter.ProcessQueuedUpdates();
+                    progressReporter.Complete();
                 }
                 catch (Exception ex)
                 {
-                    WriteError(new ErrorRecord(
-                        ex,
-                        "ChunkedFileUploadFailed",
-                        ErrorCategory.WriteError,
-                        fileInfo));
-
+                    resultCollector.QueueError(ex, "ChunkedFileUploadFailed", ErrorCategory.WriteError, fileInfo);
                     MinIOLogger.WriteVerbose(this, "Failed to upload {0}: {1}", fileInfo.Name, ex.Message);
                 }
             }
 
-            progressReporter.CompleteCollection();
+            MinIOLogger.WriteVerbose(this, "Completed chunked upload: {0} files", validFiles.Length);
 
-            // Always return uploaded objects
-            foreach (var obj in uploadedObjects)
-            {
-                WriteObject(obj);
-            }
-
-            MinIOLogger.WriteVerbose(this, "Completed chunked upload: {0} files ({1} successful, {2} failed)",
-                validFiles.Length, uploadedObjects.Count, validFiles.Length - uploadedObjects.Count);
+            // Process all results from the main thread
+            resultCollector.Complete();
         }
 
         /// <summary>
@@ -382,9 +383,9 @@ namespace PSMinIO.Cmdlets
         /// </summary>
         /// <param name="fileInfo">File to upload</param>
         /// <param name="objectName">Object name in bucket</param>
-        /// <param name="progressReporter">Progress reporter</param>
+        /// <param name="progressReporter">Thread-safe progress reporter</param>
         /// <returns>Uploaded object info or null if failed</returns>
-        private MinIOObjectInfo? UploadFileChunked(FileInfo fileInfo, string objectName, ChunkedCollectionProgressReporter progressReporter)
+        private MinIOObjectInfo? UploadFileChunked(FileInfo fileInfo, string objectName, ThreadSafeChunkedProgressReporter progressReporter)
         {
             ChunkedTransferState? transferState = null;
 
@@ -563,16 +564,23 @@ namespace PSMinIO.Cmdlets
                     {
                         MinIOLogger.WriteVerbose(this, "Creating bucket directory: {0}", folderPath);
 
-                        // Create the directory by uploading a zero-byte object
-                        using var emptyStream = new MemoryStream();
-                        Client.UploadStream(BucketName, folderPath, emptyStream, "application/x-directory");
-
-                        MinIOLogger.WriteVerbose(this, "Successfully created bucket directory: {0}", folderPath);
+                        try
+                        {
+                            // Create the directory using the dedicated method
+                            Client.CreateDirectory(BucketName, folderPath);
+                            MinIOLogger.WriteVerbose(this, "Successfully created bucket directory: {0}", folderPath);
+                        }
+                        catch (Exception createEx)
+                        {
+                            // Directory creation failed, but this is not critical since MinIO creates directories implicitly
+                            MinIOLogger.WriteVerbose(this, "Directory creation failed (non-critical): {0} - {1}", folderPath, createEx.Message);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    WriteWarning($"Could not create bucket directory '{folderPath}': {ex.Message}");
+                    // Listing failed, but this is not critical for the upload operation
+                    MinIOLogger.WriteVerbose(this, "Could not check directory existence (non-critical): {0} - {1}", folderPath, ex.Message);
                 }
             }
         }

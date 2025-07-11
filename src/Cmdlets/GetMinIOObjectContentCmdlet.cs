@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
+using PSMinIO.Models;
 using PSMinIO.Utils;
 
 namespace PSMinIO.Cmdlets
@@ -97,12 +98,17 @@ namespace PSMinIO.Cmdlets
 
                     try
                     {
+                        // Track timing for this download
+                        var startTime = DateTime.UtcNow;
+
                         // Download the file with progress reporting
                         Client.DownloadFile(
                             BucketName,
                             ObjectName,
                             FilePath.FullName,
                             bytesTransferred => progressReporter.UpdateProgress(bytesTransferred));
+
+                        var completionTime = DateTime.UtcNow;
 
                         // Complete progress reporting
                         progressReporter.Complete();
@@ -111,9 +117,10 @@ namespace PSMinIO.Cmdlets
                             "Successfully downloaded object '{0}' from bucket '{1}' to '{2}'",
                             ObjectName, BucketName, FilePath.FullName);
 
-                        // Always return file information
-                        FilePath.Refresh(); // Refresh to get updated file info
-                        WriteObject(FilePath);
+                        // Refresh file info and create download result with timing information
+                        FilePath.Refresh();
+                        var downloadResult = new MinIODownloadResult(FilePath, BucketName, ObjectName, startTime, completionTime);
+                        WriteObject(downloadResult);
                     }
 #pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in throw
                     catch (Exception ex)

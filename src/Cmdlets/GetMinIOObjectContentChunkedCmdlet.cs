@@ -47,7 +47,7 @@ namespace PSMinIO.Cmdlets
         /// Size of each chunk for download (default: 10MB)
         /// </summary>
         [Parameter]
-        [ValidateRange(1024 * 1024, 100 * 1024 * 1024)] // 1MB to 100MB
+        [ValidateRange(5 * 1024 * 1024, 500 * 1024 * 1024)] // 5MB to 500MB
         public long ChunkSize { get; set; } = 10 * 1024 * 1024; // 10MB default
 
         /// <summary>
@@ -128,17 +128,16 @@ namespace PSMinIO.Cmdlets
                         ObjectName, BucketName, SizeFormatter.FormatBytes(objectInfo.Size), SizeFormatter.FormatBytes(ChunkSize));
 
                     // Download using chunked transfer
-                    var downloadedFile = DownloadObjectChunked(objectInfo);
-                    
-                    if (downloadedFile != null)
+                    var downloadResult = DownloadObjectChunked(objectInfo);
+
+                    if (downloadResult != null)
                     {
-                        MinIOLogger.WriteVerbose(this, 
-                            "Successfully downloaded object '{0}' from bucket '{1}' to '{2}'", 
+                        MinIOLogger.WriteVerbose(this,
+                            "Successfully downloaded object '{0}' from bucket '{1}' to '{2}'",
                             ObjectName, BucketName, FilePath.FullName);
 
-                        // Always return file information
-                        FilePath.Refresh(); // Refresh to get updated file info
-                        WriteObject(FilePath);
+                        // Return download result with timing information
+                        WriteObject(downloadResult);
                     }
 
                 }, $"Bucket: {BucketName}, Object: {ObjectName}, File: {FilePath.FullName}, ChunkSize: {SizeFormatter.FormatBytes(ChunkSize)}");
@@ -167,8 +166,8 @@ namespace PSMinIO.Cmdlets
         /// Downloads an object using chunked transfer with resume capability
         /// </summary>
         /// <param name="objectInfo">Information about the object to download</param>
-        /// <returns>Downloaded file info or null if failed</returns>
-        private FileInfo? DownloadObjectChunked(MinIOObjectInfo objectInfo)
+        /// <returns>Download result with timing information or null if failed</returns>
+        private MinIODownloadResult? DownloadObjectChunked(MinIOObjectInfo objectInfo)
         {
             ChunkedTransferState? transferState = null;
 
@@ -210,29 +209,55 @@ namespace PSMinIO.Cmdlets
             // Calculate total chunks for progress reporting
             var totalChunks = (int)Math.Ceiling((double)objectInfo.Size / ChunkSize);
 
-            // Create progress reporter (single file, so no collection progress)
-            var progressReporter = new ChunkedSingleFileProgressReporter(
+            // Validate chunk count to prevent memory issues
+            if (totalChunks > 5000)
+            {
+                var recommendedChunkSize = (long)Math.Ceiling((double)objectInfo.Size / 5000);
+                WriteWarning($"Too many chunks ({totalChunks:N0}) would be created. Consider using a larger chunk size (recommended: {SizeFormatter.FormatBytes(recommendedChunkSize)})");
+                ThrowTerminatingError(new ErrorRecord(
+                    new ArgumentException($"Chunk size too small would create {totalChunks:N0} chunks. Maximum allowed is 5,000 chunks."),
+                    "TooManyChunks",
+                    ErrorCategory.InvalidArgument,
+                    ChunkSize));
+            }
+
+            // Create thread-safe progress reporter
+            var progressReporter = new ThreadSafeChunkedProgressReporter(
                 this,
                 objectInfo.Size,
                 totalChunks,
-                "Downloading",
-                ProgressUpdateInterval);
+                "Downloading");
+
+            progressReporter.StartNewFile(ObjectName, objectInfo.Size, totalChunks);
+
+            // Track timing for this download
+            var startTime = DateTime.UtcNow;
 
             try
             {
                 // Download file using chunked transfer
                 var result = Client.DownloadFileChunked(transferState, progressReporter, MaxRetries, ParallelDownloads);
-                
+
                 if (result)
                 {
+                    var completionTime = DateTime.UtcNow;
+
                     // Clean up resume data on successful completion
                     if (Resume.IsPresent)
                     {
                         ChunkedTransferResumeManager.CleanupResumeData(transferState, ResumeDataPath);
                     }
 
-                    progressReporter.CompleteDownload();
-                    return FilePath;
+                    progressReporter.CompleteFile();
+
+                    // Process any queued progress updates from the main thread
+                    progressReporter.ProcessQueuedUpdates();
+                    progressReporter.Complete();
+
+                    // Create download result with timing information
+                    FilePath.Refresh();
+                    var downloadResult = new MinIODownloadResult(FilePath, BucketName, ObjectName, startTime, completionTime);
+                    return downloadResult;
                 }
             }
 #pragma warning disable CS0168 // Variable is declared but never used - false positive, ex is used in error handling

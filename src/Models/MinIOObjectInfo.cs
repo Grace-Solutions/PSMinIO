@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using PSMinIO.Utils;
 
 namespace PSMinIO.Models
 {
@@ -77,6 +78,34 @@ namespace PSMinIO.Models
         /// Expiration time for the presigned URL (if generated)
         /// </summary>
         public DateTime? PresignedUrlExpiration { get; set; }
+
+        /// <summary>
+        /// Transfer start time
+        /// </summary>
+        public DateTime? StartTime { get; set; }
+
+        /// <summary>
+        /// Transfer completion time
+        /// </summary>
+        public DateTime? CompletionTime { get; set; }
+
+        /// <summary>
+        /// Transfer duration
+        /// </summary>
+        public TimeSpan? Duration => StartTime.HasValue && CompletionTime.HasValue ?
+            CompletionTime.Value - StartTime.Value : null;
+
+        /// <summary>
+        /// Average transfer speed in bytes per second
+        /// </summary>
+        public double? AverageSpeed => Duration.HasValue && Duration.Value.TotalSeconds > 0 ?
+            Size / Duration.Value.TotalSeconds : null;
+
+        /// <summary>
+        /// Average transfer speed formatted as string (e.g., "15.2 MB/s")
+        /// </summary>
+        public string? AverageSpeedFormatted => AverageSpeed.HasValue ?
+            $"{SizeFormatter.FormatBytes((long)AverageSpeed.Value)}/s" : null;
 
         /// <summary>
         /// Creates a new MinIOObjectInfo instance
