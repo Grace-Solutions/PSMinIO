@@ -70,7 +70,8 @@
         'Test-MinIOBucketExists',
         'Get-MinIOObject',
         'New-MinIOObject',
-        'Get-MinIOObjectContent'
+        'Get-MinIOObjectContent',
+        'New-MinIOZipArchive'
     )
 
     # Variables to export from this module
