@@ -108,7 +108,7 @@ namespace PSMinIO.Cmdlets
                 {
                     var wildcardPattern = new WildcardPattern(Name, WildcardOptions.IgnoreCase);
                     objects = objects.Where(o => o.Name != null && wildcardPattern.IsMatch(o.Name)).ToList();
-                    WriteVerboseMessage("Filtered to {0} objects matching pattern '{1}'", objects.Count, Name!);
+                    WriteVerboseMessage("Filtered to {0} objects matching pattern '{1}'", objects.Count, Name);
                 }
 
                 // Apply directory filters

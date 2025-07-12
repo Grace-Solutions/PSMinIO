@@ -24,31 +24,31 @@ namespace PSMinIO.Core.S3
             // Content-Type
             if (!string.IsNullOrEmpty(metadata.ContentType))
             {
-                headers["Content-Type"] = metadata.ContentType;
+                headers["Content-Type"] = metadata.ContentType!;
             }
 
             // Content-Encoding
             if (!string.IsNullOrEmpty(metadata.ContentEncoding))
             {
-                headers["Content-Encoding"] = metadata.ContentEncoding;
+                headers["Content-Encoding"] = metadata.ContentEncoding!;
             }
 
             // Content-Language
             if (!string.IsNullOrEmpty(metadata.ContentLanguage))
             {
-                headers["Content-Language"] = metadata.ContentLanguage;
+                headers["Content-Language"] = metadata.ContentLanguage!;
             }
 
             // Content-Disposition
             if (!string.IsNullOrEmpty(metadata.ContentDisposition))
             {
-                headers["Content-Disposition"] = metadata.ContentDisposition;
+                headers["Content-Disposition"] = metadata.ContentDisposition!;
             }
 
             // Cache-Control
             if (!string.IsNullOrEmpty(metadata.CacheControl))
             {
-                headers["Cache-Control"] = metadata.CacheControl;
+                headers["Cache-Control"] = metadata.CacheControl!;
             }
 
             // Expires
@@ -60,49 +60,49 @@ namespace PSMinIO.Core.S3
             // Server-Side Encryption
             if (!string.IsNullOrEmpty(metadata.ServerSideEncryption))
             {
-                headers["x-amz-server-side-encryption"] = metadata.ServerSideEncryption;
+                headers["x-amz-server-side-encryption"] = metadata.ServerSideEncryption!;
             }
 
             // SSE-KMS Key ID
             if (!string.IsNullOrEmpty(metadata.SSEKMSKeyId))
             {
-                headers["x-amz-server-side-encryption-aws-kms-key-id"] = metadata.SSEKMSKeyId;
+                headers["x-amz-server-side-encryption-aws-kms-key-id"] = metadata.SSEKMSKeyId!;
             }
 
             // SSE-C Algorithm
             if (!string.IsNullOrEmpty(metadata.SSECustomerAlgorithm))
             {
-                headers["x-amz-server-side-encryption-customer-algorithm"] = metadata.SSECustomerAlgorithm;
+                headers["x-amz-server-side-encryption-customer-algorithm"] = metadata.SSECustomerAlgorithm!;
             }
 
             // SSE-C Key
             if (!string.IsNullOrEmpty(metadata.SSECustomerKey))
             {
-                headers["x-amz-server-side-encryption-customer-key"] = metadata.SSECustomerKey;
+                headers["x-amz-server-side-encryption-customer-key"] = metadata.SSECustomerKey!;
             }
 
             // SSE-C Key MD5
             if (!string.IsNullOrEmpty(metadata.SSECustomerKeyMD5))
             {
-                headers["x-amz-server-side-encryption-customer-key-MD5"] = metadata.SSECustomerKeyMD5;
+                headers["x-amz-server-side-encryption-customer-key-MD5"] = metadata.SSECustomerKeyMD5!;
             }
 
             // Storage Class
             if (!string.IsNullOrEmpty(metadata.StorageClass))
             {
-                headers["x-amz-storage-class"] = metadata.StorageClass;
+                headers["x-amz-storage-class"] = metadata.StorageClass!;
             }
 
             // Website Redirect Location
             if (!string.IsNullOrEmpty(metadata.WebsiteRedirectLocation))
             {
-                headers["x-amz-website-redirect-location"] = metadata.WebsiteRedirectLocation;
+                headers["x-amz-website-redirect-location"] = metadata.WebsiteRedirectLocation!;
             }
 
             // Object Lock Mode
             if (!string.IsNullOrEmpty(metadata.ObjectLockMode))
             {
-                headers["x-amz-object-lock-mode"] = metadata.ObjectLockMode;
+                headers["x-amz-object-lock-mode"] = metadata.ObjectLockMode!;
             }
 
             // Object Lock Retain Until Date

@@ -208,7 +208,7 @@ namespace PSMinIO.Core.S3
                 throw new InvalidOperationException("Failed to initiate multipart upload - no upload ID returned");
             }
 
-            return uploadId;
+            return uploadId!;
         }
 
         /// <summary>

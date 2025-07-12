@@ -131,7 +131,7 @@ namespace PSMinIO.Cmdlets
 
                     if (!string.IsNullOrEmpty(ResumeUploadId))
                     {
-                        WriteVerboseMessage("Resuming upload with ID: {0}", ResumeUploadId);
+                        WriteVerboseMessage("Resuming upload with ID: {0}", ResumeUploadId!);
                         if (CompletedParts != null && CompletedParts.Length > 0)
                         {
                             WriteVerboseMessage("Found {0} completed parts", CompletedParts.Length);

@@ -64,7 +64,7 @@ namespace PSMinIO.Cmdlets
                 {
                     var wildcardPattern = new WildcardPattern(BucketName, WildcardOptions.IgnoreCase);
                     buckets = buckets.Where(b => b.Name != null && wildcardPattern.IsMatch(b.Name)).ToList();
-                    WriteVerboseMessage("Filtered to {0} buckets matching pattern '{1}'", buckets.Count, BucketName!);
+                    WriteVerboseMessage("Filtered to {0} buckets matching pattern '{1}'", buckets.Count, BucketName);
                 }
 
                 // Enhance bucket information if requested
