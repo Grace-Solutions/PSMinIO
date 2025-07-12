@@ -71,8 +71,15 @@
         'Get-MinIOObject',
         'New-MinIOObject',
         'Get-MinIOObjectContent',
+        'Get-MinIOObjectContentMultipart',
+        'New-MinIOObjectMultipart',
         'Get-MinIOZipArchive',
-        'New-MinIOZipArchive'
+        'New-MinIOZipArchive',
+        'Get-MinIOPresignedUrl',
+        'New-MinIOPresignedUrl',
+        'Get-MinIOBucketPolicy',
+        'Set-MinIOBucketPolicy',
+        'Remove-MinIOBucketPolicy'
     )
 
     # Variables to export from this module

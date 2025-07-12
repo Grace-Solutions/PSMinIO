@@ -194,7 +194,7 @@ namespace PSMinIO.Utils
             var fullPath = fileInfo.FullName;
             if (fullPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
             {
-                var relativePath = fullPath.Substring(basePath.Length).TrimStart('\\', '/');
+                var relativePath = fullPath.Substring(basePath!.Length).TrimStart('\\', '/');
                 return relativePath.Replace('\\', '/'); // Use forward slashes for zip entries
             }
 

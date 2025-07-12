@@ -201,7 +201,7 @@ namespace PSMinIO.Core.S3
                 };
 
                 if (!string.IsNullOrEmpty(prefix))
-                    queryParams["prefix"] = prefix;
+                    queryParams["prefix"] = prefix!;
 
                 if (!recursive)
                     queryParams["delimiter"] = "/";
