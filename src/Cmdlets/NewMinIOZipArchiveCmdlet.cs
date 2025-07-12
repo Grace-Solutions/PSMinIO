@@ -17,12 +17,12 @@ namespace PSMinIO.Cmdlets
     public class NewMinIOZipArchiveCmdlet : MinIOBaseCmdlet
     {
         /// <summary>
-        /// Path where the zip archive will be created
+        /// FileInfo object representing where the zip archive will be created
         /// </summary>
         [Parameter(Position = 0, Mandatory = true)]
-        [ValidateNotNullOrEmpty]
-        [Alias("ZipPath", "Archive")]
-        public string DestinationPath { get; set; } = string.Empty;
+        [ValidateNotNull]
+        [Alias("ZipPath", "Archive", "Destination")]
+        public FileInfo DestinationPath { get; set; } = null!;
 
         /// <summary>
         /// Array of FileInfo objects to add to the zip
@@ -100,22 +100,15 @@ namespace PSMinIO.Cmdlets
         public SwitchParameter Force { get; set; }
 
         /// <summary>
-        /// Return the zip creation result
-        /// </summary>
-        [Parameter]
-        public SwitchParameter PassThru { get; set; }
-
-        /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
         {
             // Validate destination path
-            var destinationInfo = new FileInfo(DestinationPath);
-            if (destinationInfo.Exists && !Force.IsPresent)
+            if (DestinationPath.Exists && !Force.IsPresent)
             {
                 var errorRecord = new ErrorRecord(
-                    new InvalidOperationException($"Zip file already exists: {DestinationPath}. Use -Force to overwrite."),
+                    new InvalidOperationException($"Zip file already exists: {DestinationPath.FullName}. Use -Force to overwrite."),
                     "ZipFileExists",
                     ErrorCategory.ResourceExists,
                     DestinationPath);
@@ -123,10 +116,10 @@ namespace PSMinIO.Cmdlets
             }
 
             // Ensure destination directory exists
-            if (destinationInfo.Directory != null && !destinationInfo.Directory.Exists)
+            if (DestinationPath.Directory != null && !DestinationPath.Directory.Exists)
             {
-                destinationInfo.Directory.Create();
-                WriteVerboseMessage("Created destination directory: {0}", destinationInfo.Directory.FullName);
+                DestinationPath.Directory.Create();
+                WriteVerboseMessage("Created destination directory: {0}", DestinationPath.Directory.FullName);
             }
 
             // Parse compression level
@@ -141,43 +134,41 @@ namespace PSMinIO.Cmdlets
                 _ => "Create zip archive"
             };
 
-            if (ShouldProcess(DestinationPath, operationDescription))
+            if (ShouldProcess(DestinationPath.FullName, operationDescription))
             {
-                ExecuteOperation("CreateZipArchive", () =>
+                var result = ExecuteOperation("CreateZipArchive", () =>
                 {
-                    WriteVerboseMessage("Creating zip archive: {0}", DestinationPath);
+                    WriteVerboseMessage("Creating zip archive: {0}", DestinationPath.FullName);
                     WriteVerboseMessage("Compression level: {0}, Mode: {1}", CompressionLevel, Mode);
 
-                    ZipCreationResult result;
-                    using (var zipBuilder = ZipBuilder.CreateFile(this, DestinationPath, archiveMode))
+                    ZipCreationResult zipResult;
+                    using (var zipBuilder = ZipBuilder.CreateFile(this, DestinationPath.FullName, archiveMode))
                     {
                         switch (ParameterSetName)
                         {
                             case "Files":
-                                result = ProcessFiles(zipBuilder, compressionLevel);
+                                zipResult = ProcessFiles(zipBuilder, compressionLevel);
                                 break;
                             case "Directory":
-                                result = ProcessDirectory(zipBuilder, compressionLevel);
+                                zipResult = ProcessDirectory(zipBuilder, compressionLevel);
                                 break;
                             default:
                                 throw new InvalidOperationException($"Unknown parameter set: {ParameterSetName}");
                         }
                     }
 
-                    WriteVerboseMessage("Zip archive created successfully: {0}", DestinationPath);
+                    WriteVerboseMessage("Zip archive created successfully: {0}", DestinationPath.FullName);
                     WriteVerboseMessage("Archive summary: {0} files, {1} -> {2} ({3:F1}% compression)",
-                        result.FileCount,
-                        SizeFormatter.FormatBytes(result.TotalUncompressedSize),
-                        SizeFormatter.FormatBytes(result.TotalCompressedSize),
-                        result.CompressionEfficiency);
+                        zipResult.FileCount,
+                        SizeFormatter.FormatBytes(zipResult.TotalUncompressedSize),
+                        SizeFormatter.FormatBytes(zipResult.TotalCompressedSize),
+                        zipResult.CompressionEfficiency);
 
-                    if (PassThru.IsPresent)
-                    {
-                        WriteObject(result);
-                    }
+                    return zipResult;
+                }, $"Destination: {DestinationPath.FullName}, ParameterSet: {ParameterSetName}");
 
-                    return result;
-                }, $"Destination: {DestinationPath}, ParameterSet: {ParameterSetName}");
+                // Always return the result object
+                WriteObject(result);
             }
         }
 
@@ -189,7 +180,7 @@ namespace PSMinIO.Cmdlets
             if (Path == null || Path.Length == 0)
             {
                 WriteWarning("No files provided for zip archive");
-                return zipBuilder.CreateResult(DestinationPath);
+                return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
             // Filter out files that don't exist
@@ -204,7 +195,7 @@ namespace PSMinIO.Cmdlets
             if (validFiles.Length == 0)
             {
                 WriteWarning("No valid files found for zip archive");
-                return zipBuilder.CreateResult(DestinationPath);
+                return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
             WriteVerboseMessage("Adding {0} files to zip archive", validFiles.Length);
@@ -212,7 +203,7 @@ namespace PSMinIO.Cmdlets
             // Add files to zip
             zipBuilder.AddFiles(validFiles.Cast<FileSystemInfo>(), BasePath, compressionLevel);
 
-            return zipBuilder.CreateResult(DestinationPath);
+            return zipBuilder.CreateResult(DestinationPath.FullName);
         }
 
         /// <summary>
@@ -228,7 +219,7 @@ namespace PSMinIO.Cmdlets
                     ErrorCategory.ObjectNotFound,
                     Directory);
                 ThrowTerminatingError(errorRecord);
-                return zipBuilder.CreateResult(DestinationPath);
+                return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
             // Get files from directory
@@ -236,7 +227,7 @@ namespace PSMinIO.Cmdlets
             if (files.Length == 0)
             {
                 WriteWarning($"No files found in directory: {Directory.FullName}");
-                return zipBuilder.CreateResult(DestinationPath);
+                return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
             WriteVerboseMessage("Adding directory to zip: {0} ({1} files)", Directory.Name, files.Length);
@@ -247,7 +238,7 @@ namespace PSMinIO.Cmdlets
             // Add files to zip
             zipBuilder.AddFiles(files.Cast<FileSystemInfo>(), basePath, compressionLevel);
 
-            return zipBuilder.CreateResult(DestinationPath);
+            return zipBuilder.CreateResult(DestinationPath.FullName);
         }
 
         /// <summary>

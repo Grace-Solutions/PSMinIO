@@ -71,6 +71,7 @@
         'Get-MinIOObject',
         'New-MinIOObject',
         'Get-MinIOObjectContent',
+        'Get-MinIOZipArchive',
         'New-MinIOZipArchive'
     )
 

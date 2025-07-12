@@ -53,10 +53,10 @@ try {
     # Test 1: Create zip from FileInfo array
     Write-Host "`n3. Test 1: Creating zip from FileInfo array..." -ForegroundColor Yellow
     $mainFiles = Get-ChildItem $TestDirectory -File
-    $zipPath1 = "test-files-array.zip"
-    
+    $zipFile1 = [System.IO.FileInfo]"test-files-array.zip"
+
     Write-Host "   Creating zip with $($mainFiles.Count) files using Files parameter set" -ForegroundColor Cyan
-    $result1 = New-MinIOZipArchive -DestinationPath $zipPath1 -Path $mainFiles -CompressionLevel Optimal -PassThru -Verbose
+    $result1 = New-MinIOZipArchive -DestinationPath $zipFile1 -Path $mainFiles -CompressionLevel Optimal -Verbose
     
     Write-Host "✅ Files array zip created:" -ForegroundColor Green
     Write-Host "   Files: $($result1.FileCount)" -ForegroundColor White
@@ -67,10 +67,10 @@ try {
     
     # Test 2: Create zip from directory (non-recursive)
     Write-Host "`n4. Test 2: Creating zip from directory (non-recursive)..." -ForegroundColor Yellow
-    $zipPath2 = "test-directory-flat.zip"
-    
+    $zipFile2 = [System.IO.FileInfo]"test-directory-flat.zip"
+
     Write-Host "   Creating zip from directory (top-level files only)" -ForegroundColor Cyan
-    $result2 = New-MinIOZipArchive -DestinationPath $zipPath2 -Directory (Get-Item $TestDirectory) -CompressionLevel Fastest -PassThru -Verbose
+    $result2 = New-MinIOZipArchive -DestinationPath $zipFile2 -Directory (Get-Item $TestDirectory) -CompressionLevel Fastest -Verbose
     
     Write-Host "✅ Directory flat zip created:" -ForegroundColor Green
     Write-Host "   Files: $($result2.FileCount)" -ForegroundColor White
@@ -78,10 +78,10 @@ try {
     
     # Test 3: Create zip from directory (recursive)
     Write-Host "`n5. Test 3: Creating zip from directory (recursive)..." -ForegroundColor Yellow
-    $zipPath3 = "test-directory-recursive.zip"
-    
+    $zipFile3 = [System.IO.FileInfo]"test-directory-recursive.zip"
+
     Write-Host "   Creating zip from directory (recursive, all subdirectories)" -ForegroundColor Cyan
-    $result3 = New-MinIOZipArchive -DestinationPath $zipPath3 -Directory (Get-Item $TestDirectory) -Recursive -IncludeBaseDirectory -CompressionLevel Optimal -PassThru -Verbose
+    $result3 = New-MinIOZipArchive -DestinationPath $zipFile3 -Directory (Get-Item $TestDirectory) -Recursive -IncludeBaseDirectory -CompressionLevel Optimal -Verbose
     
     Write-Host "✅ Directory recursive zip created:" -ForegroundColor Green
     Write-Host "   Files: $($result3.FileCount)" -ForegroundColor White
@@ -89,55 +89,76 @@ try {
     
     # Test 4: Create zip with file filtering
     Write-Host "`n6. Test 4: Creating zip with file filtering..." -ForegroundColor Yellow
-    $zipPath4 = "test-filtered-logs.zip"
-    
+    $zipFile4 = [System.IO.FileInfo]"test-filtered-logs.zip"
+
     Write-Host "   Creating zip with only .log files using InclusionFilter" -ForegroundColor Cyan
-    $result4 = New-MinIOZipArchive -DestinationPath $zipPath4 -Directory (Get-Item $TestDirectory) -Recursive -InclusionFilter { $_.Extension -eq ".log" } -CompressionLevel Optimal -PassThru -Verbose
-    
+    $result4 = New-MinIOZipArchive -DestinationPath $zipFile4 -Directory (Get-Item $TestDirectory) -Recursive -InclusionFilter { $_.Extension -eq ".log" } -CompressionLevel Optimal -Verbose
+
     Write-Host "✅ Filtered zip created:" -ForegroundColor Green
     Write-Host "   Log files: $($result4.FileCount)" -ForegroundColor White
     Write-Host "   Compression: $($result4.CompressionEfficiency.ToString('F1'))%" -ForegroundColor White
-    
+
     # Test 5: Append to existing zip (Update mode)
     Write-Host "`n7. Test 5: Appending to existing zip..." -ForegroundColor Yellow
     $csvFiles = Get-ChildItem $TestDirectory -Recurse -Filter "*.csv"
-    
+
     Write-Host "   Appending $($csvFiles.Count) CSV files to existing zip" -ForegroundColor Cyan
-    $result5 = New-MinIOZipArchive -DestinationPath $zipPath4 -Path $csvFiles -Mode Update -CompressionLevel Optimal -PassThru -Verbose
-    
+    $result5 = New-MinIOZipArchive -DestinationPath $zipFile4 -Path $csvFiles -Mode Update -CompressionLevel Optimal -Verbose
+
     Write-Host "✅ Files appended to zip:" -ForegroundColor Green
     Write-Host "   Total files now: $($result5.FileCount)" -ForegroundColor White
-    
+
     # Test 6: Create zip with custom base path
     Write-Host "`n8. Test 6: Creating zip with custom base path..." -ForegroundColor Yellow
-    $zipPath6 = "test-custom-basepath.zip"
-    
+    $zipFile6 = [System.IO.FileInfo]"test-custom-basepath.zip"
+
     Write-Host "   Creating zip with custom base path (flattened structure)" -ForegroundColor Cyan
-    $result6 = New-MinIOZipArchive -DestinationPath $zipPath6 -Directory (Get-Item $TestDirectory) -Recursive -BasePath $TestDirectory -CompressionLevel Optimal -PassThru -Verbose
-    
+    $result6 = New-MinIOZipArchive -DestinationPath $zipFile6 -Directory (Get-Item $TestDirectory) -Recursive -BasePath $TestDirectory -CompressionLevel Optimal -Verbose
+
     Write-Host "✅ Custom base path zip created:" -ForegroundColor Green
     Write-Host "   Files: $($result6.FileCount)" -ForegroundColor White
     
-    # Verify all zip files
-    Write-Host "`n9. Verifying created zip files..." -ForegroundColor Yellow
+    # Test 7: Get zip archive information
+    Write-Host "`n9. Test 7: Reading zip archive information..." -ForegroundColor Yellow
     $zipFiles = Get-ChildItem "*.zip"
-    
+
     foreach ($zipFile in $zipFiles) {
-        try {
-            $archive = [System.IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
-            $entryCount = $archive.Entries.Count
-            $archive.Dispose()
-            Write-Host "   ✅ $($zipFile.Name): $entryCount entries" -ForegroundColor Green
+        Write-Host "   Reading archive: $($zipFile.Name)" -ForegroundColor Cyan
+
+        # Basic archive info
+        $archiveInfo = Get-MinIOZipArchive -ZipFile $zipFile -Verbose
+        Write-Host "     Entries: $($archiveInfo.EntryCount)" -ForegroundColor White
+        Write-Host "     Size: $([math]::Round($archiveInfo.TotalUncompressedSize / 1KB, 2)) KB -> $([math]::Round($archiveInfo.TotalCompressedSize / 1KB, 2)) KB" -ForegroundColor White
+        Write-Host "     Compression: $($archiveInfo.CompressionEfficiency.ToString('F1'))%" -ForegroundColor White
+
+        # Detailed entries for one archive
+        if ($zipFile.Name -eq "test-directory-recursive.zip") {
+            Write-Host "   Getting detailed entries for recursive archive..." -ForegroundColor Cyan
+            $detailedInfo = Get-MinIOZipArchive -ZipFile $zipFile -IncludeEntries -Verbose
+            Write-Host "     Entry details: $($detailedInfo.Entries.Count) entries" -ForegroundColor White
+
+            # Show first few entries
+            $detailedInfo.Entries | Select-Object -First 3 | ForEach-Object {
+                Write-Host "       $($_.FullName) ($([math]::Round($_.Length / 1KB, 2)) KB)" -ForegroundColor Gray
+            }
         }
-        catch {
-            Write-Host "   ❌ $($zipFile.Name): Verification failed - $($_.Exception.Message)" -ForegroundColor Red
+
+        # Validate integrity for one archive
+        if ($zipFile.Name -eq "test-files-array.zip") {
+            Write-Host "   Validating archive integrity..." -ForegroundColor Cyan
+            $validatedInfo = Get-MinIOZipArchive -ZipFile $zipFile -ValidateIntegrity -Verbose
+            $validStatus = if ($validatedInfo.IsValid) { "✅ Valid" } else { "❌ Invalid" }
+            Write-Host "     Validation: $validStatus (took $($validatedInfo.ValidationDuration.TotalMilliseconds.ToString('F0'))ms)" -ForegroundColor White
         }
     }
+
+    Write-Host "✅ Archive reading tests completed!" -ForegroundColor Green
     
     # Summary
     Write-Host "`n=== TEST SUMMARY ===" -ForegroundColor Cyan
     Write-Host "✅ All zip archive tests completed successfully!" -ForegroundColor Green
-    Write-Host "Features tested:" -ForegroundColor Yellow
+    Write-Host "New-MinIOZipArchive features tested:" -ForegroundColor Yellow
+    Write-Host "  • FileInfo destination path parameter" -ForegroundColor White
     Write-Host "  • FileInfo[] parameter with Files parameter set" -ForegroundColor White
     Write-Host "  • Directory parameter with recursive and non-recursive modes" -ForegroundColor White
     Write-Host "  • File filtering with InclusionFilter ScriptBlock" -ForegroundColor White
@@ -145,7 +166,14 @@ try {
     Write-Host "  • Custom base path for entry name control" -ForegroundColor White
     Write-Host "  • Multiple compression levels (Optimal, Fastest)" -ForegroundColor White
     Write-Host "  • Comprehensive progress tracking and metrics" -ForegroundColor White
-    Write-Host "  • PassThru parameter for detailed results" -ForegroundColor White
+    Write-Host "  • Always returns result objects (no PassThru needed)" -ForegroundColor White
+
+    Write-Host "Get-MinIOZipArchive features tested:" -ForegroundColor Yellow
+    Write-Host "  • Basic archive information reading" -ForegroundColor White
+    Write-Host "  • Detailed entry information with IncludeEntries" -ForegroundColor White
+    Write-Host "  • Archive integrity validation" -ForegroundColor White
+    Write-Host "  • Proper disposal handling with OpenRead" -ForegroundColor White
+    Write-Host "  • Comprehensive metrics and compression statistics" -ForegroundColor White
     
     Write-Host "`nZip files created:" -ForegroundColor Yellow
     foreach ($zipFile in $zipFiles) {
