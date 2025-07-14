@@ -204,12 +204,18 @@ namespace PSMinIO.Utils
         /// <returns>Zip creation result</returns>
         public ZipCreationResult CreateResult(string zipFilePath)
         {
+            // Ensure the archive is completed before creating result
+            _zipBuilder.Complete();
+
+            var endTime = _zipBuilder.EndTime ?? DateTime.UtcNow;
+            var duration = _zipBuilder.Duration ?? TimeSpan.Zero;
+
             return new ZipCreationResult
             {
                 ZipFilePath = zipFilePath,
                 StartTime = _zipBuilder.StartTime,
-                EndTime = _zipBuilder.EndTime ?? DateTime.UtcNow,
-                Duration = _zipBuilder.Duration ?? TimeSpan.Zero,
+                EndTime = endTime,
+                Duration = duration,
                 FileCount = _zipBuilder.FileCount,
                 TotalUncompressedSize = _zipBuilder.TotalUncompressedSize,
                 TotalCompressedSize = _zipBuilder.TotalCompressedSize,

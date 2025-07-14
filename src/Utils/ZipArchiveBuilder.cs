@@ -19,10 +19,10 @@ namespace PSMinIO.Utils
         private bool _disposed = false;
 
         // Performance optimization fields
-        private const long FlushThreshold = 5 * 1024 * 1024; // 5MB (reduced for more frequent flushing)
+        private const long FlushThreshold = 1 * 1024 * 1024; // 1MB (very frequent flushing for real-time updates)
         private long _bytesWrittenSinceFlush = 0;
         private DateTime _lastFlush = DateTime.UtcNow;
-        private const int FlushIntervalMs = 1000; // 1 second
+        private const int FlushIntervalMs = 500; // 500ms (very frequent time-based flushing)
 
         // Cancellation support
         private CancellationTokenSource? _cancellationTokenSource;
@@ -110,17 +110,55 @@ namespace PSMinIO.Utils
         {
             try
             {
-                _archive?.Dispose(); // This forces the zip to be finalized
+                // Force flush the output stream first
                 _outputStream?.Flush();
 
                 if (_outputStream is FileStream fileStream)
                 {
-                    fileStream.Flush(true); // Force OS flush
+                    fileStream.Flush(true); // Force OS flush to disk
                 }
             }
             catch
             {
                 // Ignore flush errors during cleanup
+            }
+        }
+
+        /// <summary>
+        /// Aggressive flush that forces all buffers to disk
+        /// </summary>
+        private void AggressiveFlush()
+        {
+            try
+            {
+                // Try to flush the ZipArchive's internal buffers using reflection
+                var archiveType = _archive.GetType();
+                var streamField = archiveType.GetField("_archiveStream", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (streamField?.GetValue(_archive) is Stream archiveStream)
+                {
+                    archiveStream.Flush();
+                }
+
+                // Flush the output stream aggressively
+                _outputStream?.Flush();
+
+                if (_outputStream is FileStream fileStream)
+                {
+                    fileStream.Flush(true); // Force OS-level flush
+                }
+
+                // Force garbage collection to ensure all buffers are released
+                GC.Collect(0, GCCollectionMode.Optimized);
+            }
+            catch
+            {
+                // Ignore flush errors - fallback to basic flush
+                try
+                {
+                    _outputStream?.Flush();
+                    if (_outputStream is FileStream fs) fs.Flush(true);
+                }
+                catch { }
             }
         }
 
@@ -249,7 +287,7 @@ namespace PSMinIO.Utils
                         (now - _lastFlush).TotalMilliseconds > FlushIntervalMs)
                     {
                         entryStream.Flush();
-                        _outputStream.Flush(); // Also flush the underlying stream
+                        AggressiveFlush(); // Force all data to disk immediately
                         _bytesWrittenSinceFlush = 0;
                         _lastFlush = now;
                     }
@@ -269,7 +307,7 @@ namespace PSMinIO.Utils
 
                 // Final flush for this file
                 entryStream.Flush();
-                _outputStream.Flush(); // Force flush to disk
+                AggressiveFlush(); // Force all data to disk after each file
             }
 
             // Update metrics (access CompressedLength after the entry stream is closed)
