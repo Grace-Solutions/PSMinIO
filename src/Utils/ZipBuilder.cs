@@ -18,6 +18,7 @@ namespace PSMinIO.Utils
         private readonly ThreadSafeProgressCollector _progressCollector;
         private bool _disposed = false;
         private int _totalFiles = 0;
+        private readonly List<object> _processedItems = new List<object>();
 
         // Activity IDs for progress tracking
         private const int ZipActivityId = 10;
@@ -89,6 +90,9 @@ namespace PSMinIO.Utils
             _totalFiles = fileList.Count;
             var totalSize = fileList.OfType<FileInfo>().Sum(f => f.Length);
 
+            // Track the processed items
+            _processedItems.AddRange(fileList);
+
             MinIOLogger.WriteVerbose(_cmdlet, "Starting zip compression: {0} files, {1} total size",
                 _totalFiles, SizeFormatter.FormatBytes(totalSize));
 
@@ -112,6 +116,10 @@ namespace PSMinIO.Utils
             var files = directoryInfo.GetFiles("*", SearchOption.AllDirectories);
             _totalFiles = files.Length;
             var totalSize = files.Sum(f => f.Length);
+
+            // Track the processed directory and its files
+            _processedItems.Add(directoryInfo);
+            _processedItems.AddRange(files);
 
             MinIOLogger.WriteVerbose(_cmdlet, "Adding directory to zip: {0} ({1} files, {2})",
                 directoryInfo.Name, _totalFiles, SizeFormatter.FormatBytes(totalSize));
@@ -220,7 +228,8 @@ namespace PSMinIO.Utils
                 TotalUncompressedSize = _zipBuilder.TotalUncompressedSize,
                 TotalCompressedSize = _zipBuilder.TotalCompressedSize,
                 CompressionRatio = _zipBuilder.CompressionRatio,
-                SpaceSaved = _zipBuilder.TotalUncompressedSize - _zipBuilder.TotalCompressedSize
+                SpaceSaved = _zipBuilder.TotalUncompressedSize - _zipBuilder.TotalCompressedSize,
+                ProcessedItems = new List<object>(_processedItems) // Create a copy of the processed items
             };
         }
 
@@ -252,6 +261,7 @@ namespace PSMinIO.Utils
         public long TotalCompressedSize { get; set; }
         public double CompressionRatio { get; set; }
         public long SpaceSaved { get; set; }
+        public List<object> ProcessedItems { get; set; } = new List<object>();
         public double CompressionEfficiency => (1 - CompressionRatio) * 100;
         public double AverageSpeed => Duration.TotalSeconds > 0 ? TotalUncompressedSize / Duration.TotalSeconds : 0;
     }
