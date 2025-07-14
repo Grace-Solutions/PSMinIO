@@ -100,9 +100,23 @@ namespace PSMinIO.Utils
                 }
             }
 
-            // Update metrics
+            // Update metrics (access CompressedLength after the entry stream is closed)
             TotalUncompressedSize += fileInfo.Length;
-            TotalCompressedSize += entry.CompressedLength;
+
+            // CompressedLength is only available after the entry is fully written and closed
+            long compressedSize = 0;
+            try
+            {
+                compressedSize = entry.CompressedLength;
+                TotalCompressedSize += compressedSize;
+            }
+            catch (InvalidOperationException)
+            {
+                // CompressedLength not available yet, use uncompressed size as fallback
+                compressedSize = fileInfo.Length;
+                TotalCompressedSize += compressedSize;
+            }
+
             FileCount++;
 
             var fileEndTime = DateTime.UtcNow;
@@ -111,8 +125,8 @@ namespace PSMinIO.Utils
                 FileName = fileInfo.Name,
                 EntryName = entryName,
                 UncompressedSize = fileInfo.Length,
-                CompressedSize = entry.CompressedLength,
-                CompressionRatio = fileInfo.Length > 0 ? (double)entry.CompressedLength / fileInfo.Length : 0,
+                CompressedSize = compressedSize,
+                CompressionRatio = fileInfo.Length > 0 ? (double)compressedSize / fileInfo.Length : 0,
                 ProcessingTime = fileEndTime - fileStartTime
             });
         }
