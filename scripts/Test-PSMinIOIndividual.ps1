@@ -14,7 +14,7 @@ Write-Output ""
 
 # ===== STEP 1: IMPORT MODULE =====
 Write-Output "1. Import PSMinIO Module:"
-Import-Module ".\Module\PSMinIO\PSMinIO.psd1" -Force -Verbose
+Import-Module "..\Module\PSMinIO\PSMinIO.psd1" -Force -Verbose
 
 # ===== STEP 2: CONNECT TO S3 =====
 Write-Output "`n2. Connect to S3:"
@@ -68,7 +68,7 @@ $uploadResult2
 
 # ===== STEP 9: UPLOAD LARGE FILE (MULTIPART) =====
 Write-Output "`n9. Upload large file (multipart):"
-$multipartResult = New-MinIOObjectMultipart -BucketName $TestBucket -Files (Get-Item $LargeFile) -Verbose
+$multipartResult = New-MinIOObjectMultipart -BucketName $TestBucket -FilePath (Get-Item $LargeFile) -Verbose
 $multipartResult
 
 # ===== STEP 10: LIST OBJECTS IN BUCKET =====
@@ -79,18 +79,18 @@ $objects | Format-Table Key, @{Name="Size(KB)";Expression={[math]::Round($_.Size
 # ===== STEP 11: DOWNLOAD SMALL FILE =====
 Write-Output "`n11. Download small file:"
 $downloadPath1 = Join-Path $TestDirectory "downloaded-small.txt"
-$downloadResult1 = Get-MinIOObjectContent -BucketName $TestBucket -ObjectKey "small-test.txt" -FilePath (New-Object System.IO.FileInfo $downloadPath1) -Verbose
+$downloadResult1 = Get-MinIOObjectContent -BucketName $TestBucket -ObjectName "small-test.txt" -LocalPath $downloadPath1 -Verbose
 $downloadResult1
 
 # ===== STEP 12: DOWNLOAD LARGE FILE (MULTIPART) =====
 Write-Output "`n12. Download large file (multipart):"
 $downloadPath2 = Join-Path $TestDirectory "downloaded-large.txt"
-$multipartDownload = Get-MinIOObjectContentMultipart -BucketName $TestBucket -ObjectKey "large-test.txt" -FilePath (New-Object System.IO.FileInfo $downloadPath2) -Verbose
+$multipartDownload = Get-MinIOObjectContentMultipart -BucketName $TestBucket -ObjectName "large-test.txt" -DestinationPath (New-Object System.IO.FileInfo $downloadPath2) -Verbose
 $multipartDownload
 
 # ===== STEP 13: GENERATE PRESIGNED URL =====
 Write-Output "`n13. Generate presigned URL:"
-$presignedUrl = Get-MinIOPresignedUrl -BucketName $TestBucket -ObjectKey "small-test.txt" -Expiration (New-TimeSpan -Hours 1) -Verbose
+$presignedUrl = Get-MinIOPresignedUrl -BucketName $TestBucket -ObjectName "small-test.txt" -Expiration (New-TimeSpan -Hours 1) -Verbose
 $presignedUrl
 
 # ===== STEP 14: VERIFY DOWNLOADED FILES =====

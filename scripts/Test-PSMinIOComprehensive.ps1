@@ -100,7 +100,7 @@ try {
 
     # Test 7: Upload large file (multipart)
     Write-Verbose "Testing multipart upload..."
-    $multipartResult = New-MinIOObjectMultipart -BucketName $TestBucket -Files (Get-Item $LargeFile) -Verbose
+    $multipartResult = New-MinIOObjectMultipart -BucketName $TestBucket -FilePath (Get-Item $LargeFile) -Verbose
     $testResults += [PSCustomObject]@{
         Test = "Multipart Upload"
         Status = "Success"
@@ -121,7 +121,7 @@ try {
     # Test 9: Download small file
     Write-Verbose "Testing single file download..."
     $downloadPath = Join-Path $TestDirectory "downloaded-small.txt"
-    $downloadResult = Get-MinIOObjectContent -BucketName $TestBucket -ObjectKey "small-test.txt" -FilePath (New-Object System.IO.FileInfo $downloadPath) -Verbose
+    $downloadResult = Get-MinIOObjectContent -BucketName $TestBucket -ObjectName "small-test.txt" -LocalPath $downloadPath -Verbose
     $testResults += [PSCustomObject]@{
         Test = "Single File Download"
         Status = "Success"
@@ -132,7 +132,7 @@ try {
     # Test 10: Download large file (multipart)
     Write-Verbose "Testing multipart download..."
     $downloadPath2 = Join-Path $TestDirectory "downloaded-large.txt"
-    $multipartDownload = Get-MinIOObjectContentMultipart -BucketName $TestBucket -ObjectKey "large-test.txt" -FilePath (New-Object System.IO.FileInfo $downloadPath2) -Verbose
+    $multipartDownload = Get-MinIOObjectContentMultipart -BucketName $TestBucket -ObjectName "large-test.txt" -DestinationPath (New-Object System.IO.FileInfo $downloadPath2) -Verbose
     $testResults += [PSCustomObject]@{
         Test = "Multipart Download"
         Status = "Success"
@@ -142,7 +142,7 @@ try {
 
     # Test 11: Generate presigned URL
     Write-Verbose "Testing presigned URL generation..."
-    $presignedUrl = Get-MinIOPresignedUrl -BucketName $TestBucket -ObjectKey "small-test.txt" -Expiration (New-TimeSpan -Hours 1) -Verbose
+    $presignedUrl = Get-MinIOPresignedUrl -BucketName $TestBucket -ObjectName "small-test.txt" -Expiration (New-TimeSpan -Hours 1) -Verbose
     $testResults += [PSCustomObject]@{
         Test = "Presigned URL"
         Status = "Success"
