@@ -100,7 +100,6 @@
         'bin\PSMinIO.dll',
         'bin\PSMinIO.pdb',
         'bin\System.Text.Json.dll',
-        'bin\Newtonsoft.Json.dll',
         'types\PSMinIO.Types.ps1xml',
         'types\PSMinIO.Format.ps1xml'
     )

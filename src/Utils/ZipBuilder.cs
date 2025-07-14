@@ -17,6 +17,7 @@ namespace PSMinIO.Utils
         private readonly ZipArchiveBuilder _zipBuilder;
         private readonly ThreadSafeProgressCollector _progressCollector;
         private bool _disposed = false;
+        private int _totalFiles = 0;
 
         // Activity IDs for progress tracking
         private const int ZipActivityId = 10;
@@ -85,15 +86,15 @@ namespace PSMinIO.Utils
             if (files == null) throw new ArgumentNullException(nameof(files));
 
             var fileList = files.ToList();
-            var totalFiles = fileList.Count;
+            _totalFiles = fileList.Count;
             var totalSize = fileList.OfType<FileInfo>().Sum(f => f.Length);
 
-            MinIOLogger.WriteVerbose(_cmdlet, "Starting zip compression: {0} files, {1} total size", 
-                totalFiles, SizeFormatter.FormatBytes(totalSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "Starting zip compression: {0} files, {1} total size",
+                _totalFiles, SizeFormatter.FormatBytes(totalSize));
 
             // Initialize overall progress
-            _progressCollector.QueueProgressUpdate(ZipActivityId, "Creating Zip Archive", 
-                $"Preparing to compress {totalFiles} files", 0);
+            _progressCollector.QueueProgressUpdate(ZipActivityId, "Creating Zip Archive",
+                $"Preparing to compress {_totalFiles} files", 0);
 
             _zipBuilder.AddFiles(files, basePath, compressionLevel);
         }
@@ -109,10 +110,11 @@ namespace PSMinIO.Utils
             if (directoryInfo == null) throw new ArgumentNullException(nameof(directoryInfo));
 
             var files = directoryInfo.GetFiles("*", SearchOption.AllDirectories);
+            _totalFiles = files.Length;
             var totalSize = files.Sum(f => f.Length);
 
-            MinIOLogger.WriteVerbose(_cmdlet, "Adding directory to zip: {0} ({1} files, {2})", 
-                directoryInfo.Name, files.Length, SizeFormatter.FormatBytes(totalSize));
+            MinIOLogger.WriteVerbose(_cmdlet, "Adding directory to zip: {0} ({1} files, {2})",
+                directoryInfo.Name, _totalFiles, SizeFormatter.FormatBytes(totalSize));
 
             _zipBuilder.AddDirectory(directoryInfo, includeBaseDirectory, compressionLevel);
         }
@@ -138,19 +140,25 @@ namespace PSMinIO.Utils
         private void OnProgressChanged(object? sender, ZipProgressEventArgs e)
         {
             // Update file-level progress
-            _progressCollector.QueueProgressUpdate(FileActivityId, "Compressing File", 
+            _progressCollector.QueueProgressUpdate(FileActivityId, "Compressing File",
                 $"Processing: {e.CurrentFileName} ({SizeFormatter.FormatBytes(e.CurrentFileBytesProcessed)}/{SizeFormatter.FormatBytes(e.CurrentFileSize)})",
                 (int)e.CurrentFileProgress, ZipActivityId);
 
-            // Update overall progress
-            var overallStatus = $"Compressed {e.TotalFilesProcessed} files";
+            // Update overall progress with file count
+            var currentFile = e.TotalFilesProcessed + 1; // +1 because we're currently processing this file
+            var overallStatus = _totalFiles > 0
+                ? $"Processing file {currentFile} of {_totalFiles}"
+                : $"Compressed {e.TotalFilesProcessed} files";
+
             if (e.ElapsedTime.TotalSeconds > 0)
             {
                 var speed = e.TotalBytesProcessed / e.ElapsedTime.TotalSeconds;
                 overallStatus += $" at {SizeFormatter.FormatSpeed(speed)}";
             }
 
-            _progressCollector.QueueProgressUpdate(ZipActivityId, "Creating Zip Archive", overallStatus, -1);
+            // Calculate overall progress percentage
+            var overallProgress = _totalFiles > 0 ? (int)((double)e.TotalFilesProcessed / _totalFiles * 100) : -1;
+            _progressCollector.QueueProgressUpdate(ZipActivityId, "Creating Zip Archive", overallStatus, overallProgress);
 
             // Process queued updates
             _progressCollector.ProcessQueuedUpdates();
