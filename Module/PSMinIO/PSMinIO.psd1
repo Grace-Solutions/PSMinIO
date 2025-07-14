@@ -21,7 +21,7 @@
     Copyright = '(c) 2025 Grace Solutions. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'A comprehensive PowerShell module for MinIO object storage operations with enterprise-grade features including chunked transfers, advanced object listing, directory management, and performance monitoring. Built on the official Minio .NET SDK.'
+    Description = 'A comprehensive PowerShell module for MinIO object storage operations with enterprise-grade features including multipart uploads/downloads, presigned URLs, bucket policies, advanced metadata handling, and performance monitoring. Built with custom REST API implementation for optimal PowerShell compatibility.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -98,6 +98,9 @@
     FileList = @(
         'PSMinIO.psd1',
         'bin\PSMinIO.dll',
+        'bin\PSMinIO.pdb',
+        'bin\System.Text.Json.dll',
+        'bin\Newtonsoft.Json.dll',
         'types\PSMinIO.Types.ps1xml',
         'types\PSMinIO.Format.ps1xml'
     )
