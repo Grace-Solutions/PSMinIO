@@ -19,10 +19,10 @@ namespace PSMinIO.Utils
         private bool _disposed = false;
 
         // Performance optimization fields
-        private const long FlushThreshold = 1 * 1024 * 1024; // 1MB (very frequent flushing for real-time updates)
+        private const long FlushThreshold = 5 * 1024 * 1024; // 5MB (balanced flushing for good performance)
         private long _bytesWrittenSinceFlush = 0;
         private DateTime _lastFlush = DateTime.UtcNow;
-        private const int FlushIntervalMs = 500; // 500ms (very frequent time-based flushing)
+        private const int FlushIntervalMs = 3000; // 3 seconds (reasonable time-based flushing)
 
         // Cancellation support
         private CancellationTokenSource? _cancellationTokenSource;
