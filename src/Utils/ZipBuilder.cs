@@ -18,6 +18,7 @@ namespace PSMinIO.Utils
         private readonly ThreadSafeProgressCollector _progressCollector;
         private bool _disposed = false;
         private int _totalFiles = 0;
+        private int _currentFileIndex = 0;
         private readonly List<object> _processedItems = new List<object>();
 
         // Activity IDs for progress tracking
@@ -177,8 +178,14 @@ namespace PSMinIO.Utils
         /// </summary>
         private void OnFileAdded(object? sender, ZipFileEventArgs e)
         {
-            _progressCollector.QueueVerboseMessage("Compressed: {0} -> {1} ({2:F1}% reduction, {3})", 
-                e.FileName,
+            // Increment the current file counter
+            _currentFileIndex++;
+
+            // Log with counter and full path: "Counter of Total - FullPath"
+            _progressCollector.QueueVerboseMessage("{0} of {1} - {2} -> {3} ({4:F1}% reduction, {5})",
+                _currentFileIndex,
+                _totalFiles,
+                e.FullPath,
                 SizeFormatter.FormatBytes(e.CompressedSize),
                 e.CompressionEfficiency,
                 SizeFormatter.FormatDuration(e.ProcessingTime));

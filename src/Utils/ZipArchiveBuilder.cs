@@ -333,6 +333,7 @@ namespace PSMinIO.Utils
             OnFileAdded(new ZipFileEventArgs
             {
                 FileName = fileInfo.Name,
+                FullPath = fileInfo.FullName,
                 EntryName = entryName,
                 UncompressedSize = fileInfo.Length,
                 CompressedSize = compressedSize,

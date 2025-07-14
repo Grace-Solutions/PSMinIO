@@ -59,6 +59,11 @@ namespace PSMinIO.Utils
         public string FileName { get; set; } = string.Empty;
 
         /// <summary>
+        /// Full path of the original file
+        /// </summary>
+        public string FullPath { get; set; } = string.Empty;
+
+        /// <summary>
         /// Entry name in the zip archive
         /// </summary>
         public string EntryName { get; set; } = string.Empty;
