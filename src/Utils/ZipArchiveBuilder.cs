@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 
 namespace PSMinIO.Utils
 {
@@ -18,8 +19,14 @@ namespace PSMinIO.Utils
         private bool _disposed = false;
 
         // Performance optimization fields
-        private const long FlushThreshold = 10 * 1024 * 1024; // 10MB
+        private const long FlushThreshold = 5 * 1024 * 1024; // 5MB (reduced for more frequent flushing)
         private long _bytesWrittenSinceFlush = 0;
+        private DateTime _lastFlush = DateTime.UtcNow;
+        private const int FlushIntervalMs = 1000; // 1 second
+
+        // Cancellation support
+        private CancellationTokenSource? _cancellationTokenSource;
+        private volatile bool _isCancelled = false;
 
         // Progress tracking
         public event EventHandler<ZipProgressEventArgs>? ProgressChanged;
@@ -47,6 +54,10 @@ namespace PSMinIO.Utils
             _leaveOpen = leaveOpen;
             _archive = new ZipArchive(_outputStream, mode, _leaveOpen);
             StartTime = DateTime.UtcNow;
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            // Set up Ctrl+C handling
+            Console.CancelKeyPress += OnCancelKeyPress;
         }
 
         /// <summary>
@@ -58,6 +69,59 @@ namespace PSMinIO.Utils
         {
             var fileStream = new FileStream(zipFilePath, FileMode.Create, FileAccess.Write);
             return new ZipArchiveBuilder(fileStream, mode, false);
+        }
+
+        /// <summary>
+        /// Handles Ctrl+C cancellation
+        /// </summary>
+        private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true; // Prevent immediate termination
+            _isCancelled = true;
+            _cancellationTokenSource?.Cancel();
+
+            // Force flush and complete the archive
+            try
+            {
+                FlushToDisk();
+                Complete();
+            }
+            catch
+            {
+                // Ignore errors during emergency cleanup
+            }
+        }
+
+        /// <summary>
+        /// Checks if operation has been cancelled
+        /// </summary>
+        private void ThrowIfCancelled()
+        {
+            if (_isCancelled)
+            {
+                throw new OperationCanceledException("Zip operation was cancelled by user");
+            }
+        }
+
+        /// <summary>
+        /// Forces flush of all data to disk
+        /// </summary>
+        private void FlushToDisk()
+        {
+            try
+            {
+                _archive?.Dispose(); // This forces the zip to be finalized
+                _outputStream?.Flush();
+
+                if (_outputStream is FileStream fileStream)
+                {
+                    fileStream.Flush(true); // Force OS flush
+                }
+            }
+            catch
+            {
+                // Ignore flush errors during cleanup
+            }
         }
 
         /// <summary>
@@ -149,6 +213,9 @@ namespace PSMinIO.Utils
             if (fileInfo == null) throw new ArgumentNullException(nameof(fileInfo));
             if (!fileInfo.Exists) throw new FileNotFoundException($"File not found: {fileInfo.FullName}");
 
+            // Check for cancellation before starting
+            ThrowIfCancelled();
+
             entryName ??= fileInfo.Name;
             var fileStartTime = DateTime.UtcNow;
 
@@ -169,15 +236,22 @@ namespace PSMinIO.Utils
 
                 while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) > 0)
                 {
+                    // Check for cancellation during processing
+                    ThrowIfCancelled();
+
                     entryStream.Write(buffer, 0, bytesRead);
                     bytesProcessed += bytesRead;
                     _bytesWrittenSinceFlush += bytesRead;
 
-                    // Periodic flushing based on size threshold
-                    if (_bytesWrittenSinceFlush >= FlushThreshold)
+                    // Hybrid flushing: size-based OR time-based
+                    var now = DateTime.UtcNow;
+                    if (_bytesWrittenSinceFlush >= FlushThreshold ||
+                        (now - _lastFlush).TotalMilliseconds > FlushIntervalMs)
                     {
                         entryStream.Flush();
+                        _outputStream.Flush(); // Also flush the underlying stream
                         _bytesWrittenSinceFlush = 0;
+                        _lastFlush = now;
                     }
 
                     // Report progress
@@ -195,6 +269,7 @@ namespace PSMinIO.Utils
 
                 // Final flush for this file
                 entryStream.Flush();
+                _outputStream.Flush(); // Force flush to disk
             }
 
             // Update metrics (access CompressedLength after the entry stream is closed)
@@ -267,6 +342,9 @@ namespace PSMinIO.Utils
             // Process files in optimized order
             foreach (var fileInfo in optimizedFiles)
             {
+                // Check for cancellation before each file
+                ThrowIfCancelled();
+
                 var entryName = GetEntryName(fileInfo, basePath);
                 AddFile(fileInfo, entryName, compressionLevel);
             }
@@ -360,13 +438,38 @@ namespace PSMinIO.Utils
         {
             if (!_disposed)
             {
-                Complete();
-                _archive?.Dispose();
-                if (!_leaveOpen)
+                try
                 {
-                    _outputStream?.Dispose();
+                    // Remove Ctrl+C handler
+                    Console.CancelKeyPress -= OnCancelKeyPress;
+
+                    // Complete the archive if not cancelled
+                    if (!_isCancelled)
+                    {
+                        Complete();
+                    }
+
+                    // Final flush to ensure all data is written
+                    _outputStream?.Flush();
+                    if (_outputStream is FileStream fileStream)
+                    {
+                        fileStream.Flush(true); // Force OS flush
+                    }
                 }
-                _disposed = true;
+                catch
+                {
+                    // Ignore errors during disposal
+                }
+                finally
+                {
+                    _archive?.Dispose();
+                    _cancellationTokenSource?.Dispose();
+                    if (!_leaveOpen)
+                    {
+                        _outputStream?.Dispose();
+                    }
+                    _disposed = true;
+                }
             }
         }
     }
