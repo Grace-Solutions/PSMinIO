@@ -17,6 +17,10 @@ namespace PSMinIO.Utils
         private readonly bool _leaveOpen;
         private bool _disposed = false;
 
+        // Performance optimization fields
+        private const long FlushThreshold = 10 * 1024 * 1024; // 10MB
+        private long _bytesWrittenSinceFlush = 0;
+
         // Progress tracking
         public event EventHandler<ZipProgressEventArgs>? ProgressChanged;
         public event EventHandler<ZipFileEventArgs>? FileAdded;
@@ -57,12 +61,90 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
+        /// Gets optimal buffer size based on file size
+        /// </summary>
+        private static int GetOptimalBufferSize(long fileSize)
+        {
+            return fileSize switch
+            {
+                < 64 * 1024 => 8 * 1024,           // < 64KB: 8KB buffer (small files)
+                < 1024 * 1024 => 64 * 1024,       // < 1MB: 64KB buffer
+                < 10 * 1024 * 1024 => 256 * 1024, // < 10MB: 256KB buffer
+                < 100 * 1024 * 1024 => 1024 * 1024, // < 100MB: 1MB buffer
+                _ => 4 * 1024 * 1024               // >= 100MB: 4MB buffer (large files)
+            };
+        }
+
+        /// <summary>
+        /// Gets optimal compression level based on file characteristics
+        /// </summary>
+        private static CompressionLevel GetOptimalCompressionLevel(FileInfo fileInfo, CompressionLevel? userSpecified = null)
+        {
+            // If user specified a compression level, always use it
+            if (userSpecified.HasValue)
+                return userSpecified.Value;
+
+            var extension = fileInfo.Extension.ToLowerInvariant();
+
+            // Already compressed formats - use fastest to avoid double compression overhead
+            if (IsAlreadyCompressed(extension))
+                return CompressionLevel.Fastest;
+
+            // Small files (< 1MB) - use optimal for better compression ratio
+            if (fileInfo.Length < 1024 * 1024)
+                return CompressionLevel.Optimal;
+
+            // Large files (> 100MB) - prioritize speed
+            if (fileInfo.Length > 100 * 1024 * 1024)
+                return CompressionLevel.Fastest;
+
+            // Medium files - balance speed vs compression
+            return CompressionLevel.Optimal;
+        }
+
+        /// <summary>
+        /// Checks if file extension indicates already compressed content
+        /// </summary>
+        private static bool IsAlreadyCompressed(string extension)
+        {
+            var compressedExtensions = new HashSet<string>
+            {
+                // Archives
+                ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar",
+                // Images
+                ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif",
+                // Audio
+                ".mp3", ".aac", ".ogg", ".m4a", ".flac",
+                // Video
+                ".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v",
+                // Documents
+                ".pdf", ".docx", ".xlsx", ".pptx"
+            };
+
+            return compressedExtensions.Contains(extension);
+        }
+
+        /// <summary>
+        /// Optimizes file processing order for better performance
+        /// </summary>
+        private static IEnumerable<FileInfo> OptimizeFileProcessingOrder(IEnumerable<FileSystemInfo> files)
+        {
+            var fileInfos = files.OfType<FileInfo>().ToList();
+
+            // Sort by directory first (improves disk access patterns)
+            // Then by size (small files first for quick progress feedback)
+            return fileInfos.OrderBy(f => f.DirectoryName)
+                           .ThenBy(f => f.Length)
+                           .ThenBy(f => f.Name); // Consistent ordering for same-size files
+        }
+
+        /// <summary>
         /// Adds a single file to the zip archive
         /// </summary>
         /// <param name="fileInfo">File to add</param>
         /// <param name="entryName">Name of the entry in the zip (optional, uses file name if null)</param>
-        /// <param name="compressionLevel">Compression level to use</param>
-        public void AddFile(FileInfo fileInfo, string? entryName = null, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        /// <param name="compressionLevel">Compression level to use (null for adaptive compression)</param>
+        public void AddFile(FileInfo fileInfo, string? entryName = null, CompressionLevel? compressionLevel = null)
         {
             if (fileInfo == null) throw new ArgumentNullException(nameof(fileInfo));
             if (!fileInfo.Exists) throw new FileNotFoundException($"File not found: {fileInfo.FullName}");
@@ -70,21 +152,33 @@ namespace PSMinIO.Utils
             entryName ??= fileInfo.Name;
             var fileStartTime = DateTime.UtcNow;
 
+            // Get optimal compression level and buffer size
+            var effectiveCompressionLevel = GetOptimalCompressionLevel(fileInfo, compressionLevel);
+            var bufferSize = GetOptimalBufferSize(fileInfo.Length);
+
             // Create entry in zip
-            var entry = _archive.CreateEntry(entryName, compressionLevel);
+            var entry = _archive.CreateEntry(entryName, effectiveCompressionLevel);
             entry.LastWriteTime = fileInfo.LastWriteTime;
 
             long bytesProcessed = 0;
             using (var fileStream = fileInfo.OpenRead())
             using (var entryStream = entry.Open())
             {
-                var buffer = new byte[81920]; // 80KB buffer for good performance
+                var buffer = new byte[bufferSize]; // Adaptive buffer size
                 int bytesRead;
 
                 while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) > 0)
                 {
                     entryStream.Write(buffer, 0, bytesRead);
                     bytesProcessed += bytesRead;
+                    _bytesWrittenSinceFlush += bytesRead;
+
+                    // Periodic flushing based on size threshold
+                    if (_bytesWrittenSinceFlush >= FlushThreshold)
+                    {
+                        entryStream.Flush();
+                        _bytesWrittenSinceFlush = 0;
+                    }
 
                     // Report progress
                     OnProgressChanged(new ZipProgressEventArgs
@@ -98,6 +192,9 @@ namespace PSMinIO.Utils
                         ElapsedTime = DateTime.UtcNow - StartTime
                     });
                 }
+
+                // Final flush for this file
+                entryStream.Flush();
             }
 
             // Update metrics (access CompressedLength after the entry stream is closed)
@@ -132,29 +229,46 @@ namespace PSMinIO.Utils
         }
 
         /// <summary>
-        /// Adds multiple files to the zip archive
+        /// Adds multiple files to the zip archive with optimized processing order
         /// </summary>
         /// <param name="files">Files to add</param>
         /// <param name="basePath">Base path to remove from entry names (optional)</param>
-        /// <param name="compressionLevel">Compression level to use</param>
-        public void AddFiles(IEnumerable<FileSystemInfo> files, string? basePath = null, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        /// <param name="compressionLevel">Compression level to use (null for adaptive compression)</param>
+        public void AddFiles(IEnumerable<FileSystemInfo> files, string? basePath = null, CompressionLevel? compressionLevel = null)
         {
             if (files == null) throw new ArgumentNullException(nameof(files));
+
+            // Separate files and directories for optimized processing
+            var fileList = new List<FileInfo>();
+            var directories = new List<DirectoryInfo>();
 
             foreach (var file in files)
             {
                 if (file is FileInfo fileInfo)
                 {
-                    var entryName = GetEntryName(fileInfo, basePath);
-                    AddFile(fileInfo, entryName, compressionLevel);
+                    fileList.Add(fileInfo);
                 }
                 else if (file is DirectoryInfo dirInfo)
                 {
-                    // Add directory files recursively
-                    var dirFiles = dirInfo.GetFiles("*", SearchOption.AllDirectories);
-                    var dirBasePath = basePath ?? dirInfo.FullName;
-                    AddFiles(dirFiles, dirBasePath, compressionLevel);
+                    directories.Add(dirInfo);
                 }
+            }
+
+            // Process directories first to collect all files
+            foreach (var dirInfo in directories)
+            {
+                var dirFiles = dirInfo.GetFiles("*", SearchOption.AllDirectories);
+                fileList.AddRange(dirFiles);
+            }
+
+            // Optimize file processing order for better performance
+            var optimizedFiles = OptimizeFileProcessingOrder(fileList);
+
+            // Process files in optimized order
+            foreach (var fileInfo in optimizedFiles)
+            {
+                var entryName = GetEntryName(fileInfo, basePath);
+                AddFile(fileInfo, entryName, compressionLevel);
             }
         }
 
@@ -163,15 +277,15 @@ namespace PSMinIO.Utils
         /// </summary>
         /// <param name="directoryInfo">Directory to add</param>
         /// <param name="includeBaseDirectory">Whether to include the base directory in entry names</param>
-        /// <param name="compressionLevel">Compression level to use</param>
-        public void AddDirectory(DirectoryInfo directoryInfo, bool includeBaseDirectory = true, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        /// <param name="compressionLevel">Compression level to use (null for adaptive compression)</param>
+        public void AddDirectory(DirectoryInfo directoryInfo, bool includeBaseDirectory = true, CompressionLevel? compressionLevel = null)
         {
             if (directoryInfo == null) throw new ArgumentNullException(nameof(directoryInfo));
             if (!directoryInfo.Exists) throw new DirectoryNotFoundException($"Directory not found: {directoryInfo.FullName}");
 
             var files = directoryInfo.GetFiles("*", SearchOption.AllDirectories);
             var basePath = includeBaseDirectory ? directoryInfo.Parent?.FullName : directoryInfo.FullName;
-            
+
             AddFiles(files, basePath, compressionLevel);
         }
 

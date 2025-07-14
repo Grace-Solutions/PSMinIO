@@ -80,8 +80,8 @@ namespace PSMinIO.Utils
         /// </summary>
         /// <param name="files">Files to add</param>
         /// <param name="basePath">Base path for entry names (optional)</param>
-        /// <param name="compressionLevel">Compression level</param>
-        public void AddFiles(IEnumerable<FileSystemInfo> files, string? basePath = null, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        /// <param name="compressionLevel">Compression level (null for adaptive compression)</param>
+        public void AddFiles(IEnumerable<FileSystemInfo> files, string? basePath = null, CompressionLevel? compressionLevel = null)
         {
             if (files == null) throw new ArgumentNullException(nameof(files));
 
@@ -104,8 +104,8 @@ namespace PSMinIO.Utils
         /// </summary>
         /// <param name="directoryInfo">Directory to add</param>
         /// <param name="includeBaseDirectory">Include base directory in entry names</param>
-        /// <param name="compressionLevel">Compression level</param>
-        public void AddDirectory(DirectoryInfo directoryInfo, bool includeBaseDirectory = true, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        /// <param name="compressionLevel">Compression level (null for adaptive compression)</param>
+        public void AddDirectory(DirectoryInfo directoryInfo, bool includeBaseDirectory = true, CompressionLevel? compressionLevel = null)
         {
             if (directoryInfo == null) throw new ArgumentNullException(nameof(directoryInfo));
 

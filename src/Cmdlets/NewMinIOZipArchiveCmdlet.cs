@@ -80,11 +80,11 @@ namespace PSMinIO.Cmdlets
         public ScriptBlock? ExclusionFilter { get; set; }
 
         /// <summary>
-        /// Compression level to use
+        /// Compression level to use. Adaptive automatically selects optimal compression based on file type and size.
         /// </summary>
         [Parameter]
-        [ValidateSet("Optimal", "Fastest", "NoCompression")]
-        public string CompressionLevel { get; set; } = "Optimal";
+        [ValidateSet("Optimal", "Fastest", "NoCompression", "Adaptive")]
+        public string CompressionLevel { get; set; } = "Adaptive";
 
         /// <summary>
         /// Archive mode (Create, Update for appending)
@@ -198,10 +198,12 @@ namespace PSMinIO.Cmdlets
                 return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
-            WriteVerboseMessage("Adding {0} files to zip archive", validFiles.Length);
+            WriteVerboseMessage("Adding {0} files to zip archive with {0} compression",
+                validFiles.Length, CompressionLevel == "Adaptive" ? "adaptive" : CompressionLevel.ToLowerInvariant());
 
-            // Add files to zip
-            zipBuilder.AddFiles(validFiles.Cast<FileSystemInfo>(), BasePath, compressionLevel);
+            // Add files to zip - pass null for adaptive compression
+            var effectiveCompressionLevel = CompressionLevel == "Adaptive" ? null : (System.IO.Compression.CompressionLevel?)compressionLevel;
+            zipBuilder.AddFiles(validFiles.Cast<FileSystemInfo>(), BasePath, effectiveCompressionLevel);
 
             return zipBuilder.CreateResult(DestinationPath.FullName);
         }
@@ -230,13 +232,15 @@ namespace PSMinIO.Cmdlets
                 return zipBuilder.CreateResult(DestinationPath.FullName);
             }
 
-            WriteVerboseMessage("Adding directory to zip: {0} ({1} files)", Directory.Name, files.Length);
+            WriteVerboseMessage("Adding directory to zip: {0} ({1} files) with {2} compression",
+                Directory.Name, files.Length, CompressionLevel == "Adaptive" ? "adaptive" : CompressionLevel.ToLowerInvariant());
 
             // Determine base path for entries
             var basePath = BasePath ?? (IncludeBaseDirectory.IsPresent ? Directory.Parent?.FullName : Directory.FullName);
 
-            // Add files to zip
-            zipBuilder.AddFiles(files.Cast<FileSystemInfo>(), basePath, compressionLevel);
+            // Add files to zip - pass null for adaptive compression
+            var effectiveCompressionLevel = CompressionLevel == "Adaptive" ? null : (System.IO.Compression.CompressionLevel?)compressionLevel;
+            zipBuilder.AddFiles(files.Cast<FileSystemInfo>(), basePath, effectiveCompressionLevel);
 
             return zipBuilder.CreateResult(DestinationPath.FullName);
         }
