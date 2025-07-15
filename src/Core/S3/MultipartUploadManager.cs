@@ -48,10 +48,19 @@ namespace PSMinIO.Core.S3
             var totalSize = fileInfo.Length;
             var totalParts = (int)Math.Ceiling((double)totalSize / effectiveChunkSize);
 
-            _progressCollector.QueueVerboseMessage("Starting multipart upload: {0} -> {1}/{2}", 
+            _progressCollector.QueueVerboseMessage("Starting multipart upload: {0} -> {1}/{2}",
                 fileInfo.Name, bucketName, objectName);
-            _progressCollector.QueueVerboseMessage("File size: {0}, Chunk size: {1}, Total parts: {2}", 
+            _progressCollector.QueueVerboseMessage("File size: {0}, Chunk size: {1}, Total parts: {2}",
                 SizeFormatter.FormatBytes(totalSize), SizeFormatter.FormatBytes(effectiveChunkSize), totalParts);
+
+            // Initialize 3-layer progress tracking
+            // Layer 1: Collection Progress (if multiple files)
+            _progressCollector.QueueProgressUpdate(1, "Multipart Upload Collection",
+                $"Processing {fileInfo.Name}", 0);
+
+            // Layer 2: File Progress
+            _progressCollector.QueueProgressUpdate(2, "File Upload",
+                $"Uploading {fileInfo.Name} ({SizeFormatter.FormatBytes(totalSize)})", 0, 1);
 
             var uploadId = resumeUploadId;
             var parts = new ConcurrentDictionary<int, PartInfo>();
@@ -105,15 +114,16 @@ namespace PSMinIO.Core.S3
                             
                             // Update progress
                             var currentUploaded = Interlocked.Add(ref uploadedBytes, partSize);
-                            var progress = (double)currentUploaded / totalSize * 100;
+                            var fileProgress = (double)currentUploaded / totalSize * 100;
                             var elapsed = DateTime.UtcNow - operationStartTime;
                             var speed = elapsed.TotalSeconds > 0 ? currentUploaded / elapsed.TotalSeconds : 0;
 
-                            _progressCollector.QueueProgressUpdate(1, "Multipart Upload", 
-                                $"Part {partNum}/{totalParts} - {SizeFormatter.FormatBytes(currentUploaded)}/{SizeFormatter.FormatBytes(totalSize)} at {SizeFormatter.FormatSpeed(speed)}", 
-                                (int)progress);
+                            // Update file progress (Layer 2)
+                            _progressCollector.QueueProgressUpdate(2, "File Upload",
+                                $"Part {partNum}/{totalParts} - {SizeFormatter.FormatBytes(currentUploaded)}/{SizeFormatter.FormatBytes(totalSize)} at {SizeFormatter.FormatSpeed(speed)}",
+                                (int)fileProgress, 1);
 
-                            _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})", 
+                            _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})",
                                 partNum, totalParts, SizeFormatter.FormatBytes(partSize));
                         }
                         finally
@@ -136,10 +146,12 @@ namespace PSMinIO.Core.S3
                 var averageSpeed = totalDuration.TotalSeconds > 0 ? totalSize / totalDuration.TotalSeconds : 0;
 
                 _progressCollector.QueueVerboseMessage("Multipart upload completed successfully");
-                _progressCollector.QueueVerboseMessage("Total time: {0}, Average speed: {1}", 
+                _progressCollector.QueueVerboseMessage("Total time: {0}, Average speed: {1}",
                     SizeFormatter.FormatDuration(totalDuration), SizeFormatter.FormatSpeed(averageSpeed));
 
-                _progressCollector.QueueProgressCompletion(1, "Multipart Upload");
+                // Complete all progress layers
+                _progressCollector.QueueProgressCompletion(2, "File Upload", 1);
+                _progressCollector.QueueProgressCompletion(1, "Multipart Upload Collection");
 
                 return new MultipartUploadResult
                 {
@@ -229,9 +241,21 @@ namespace PSMinIO.Core.S3
 
             using var fileStream = fileInfo.OpenRead();
             fileStream.Seek(offset, SeekOrigin.Begin);
-            
+
+            // Create progress-tracking stream for chunk upload (Layer 3)
+            var progressStream = new ProgressTrackingStream(fileStream, size,
+                (bytesRead, totalBytes) =>
+                {
+                    var chunkProgress = (double)bytesRead / totalBytes * 100;
+                    _progressCollector.QueueProgressUpdate(3, "Uploading Chunk",
+                        $"Part {partNumber}: {SizeFormatter.FormatBytes(bytesRead)}/{SizeFormatter.FormatBytes(totalBytes)}",
+                        (int)chunkProgress, 2); // Parent: File Upload (Layer 2)
+                });
+
+            // Read data for MD5 calculation (still need to buffer for MD5)
             var buffer = new byte[size];
             var totalRead = 0;
+            var originalPosition = fileStream.Position;
             while (totalRead < size)
             {
                 var bytesRead = fileStream.Read(buffer, totalRead, (int)(size - totalRead));
@@ -239,20 +263,26 @@ namespace PSMinIO.Core.S3
                 totalRead += bytesRead;
             }
 
-            using var content = new ByteArrayContent(buffer, 0, totalRead);
-            content.Headers.ContentLength = totalRead;
-
             // Calculate MD5 for integrity
             using var md5 = MD5.Create();
             var md5Hash = md5.ComputeHash(buffer, 0, totalRead);
             var md5String = Convert.ToBase64String(md5Hash);
+
+            // Reset stream position for actual upload
+            fileStream.Seek(originalPosition, SeekOrigin.Begin);
+
+            using var content = new StreamContent(progressStream);
+            content.Headers.ContentLength = size;
             content.Headers.Add("Content-MD5", md5String);
 
             var response = _httpClient.ExecuteRequest(HttpMethod.Put, $"/{bucketName}/{objectName}",
                 queryParams, content: content);
 
             var etag = response.Headers.ETag?.Tag?.Trim('"') ?? "";
-            
+
+            // Complete chunk progress (Layer 3)
+            _progressCollector.QueueProgressCompletion(3, "Uploading Chunk", 2);
+
             return new PartInfo
             {
                 PartNumber = partNumber,
