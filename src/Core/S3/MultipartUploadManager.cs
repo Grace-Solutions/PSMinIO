@@ -197,15 +197,20 @@ namespace PSMinIO.Core.S3
                 }
             }
 
-            var response = _httpClient.ExecuteRequestForString(HttpMethod.Post, $"/{bucketName}/{objectName}", 
+            var response = _httpClient.ExecuteRequestForString(HttpMethod.Post, $"/{bucketName}/{objectName}",
                 queryParams, headers);
 
             var doc = XDocument.Parse(response);
-            var uploadId = doc.Descendants("UploadId").FirstOrDefault()?.Value;
-            
+
+            // Handle XML namespace properly
+            var ns = doc.Root?.GetDefaultNamespace();
+            var uploadId = ns != null
+                ? doc.Descendants(ns + "UploadId").FirstOrDefault()?.Value
+                : doc.Descendants("UploadId").FirstOrDefault()?.Value;
+
             if (string.IsNullOrEmpty(uploadId))
             {
-                throw new InvalidOperationException("Failed to initiate multipart upload - no upload ID returned");
+                throw new InvalidOperationException($"Failed to initiate multipart upload - no upload ID returned. Response: {response}");
             }
 
             return uploadId!;
@@ -280,7 +285,12 @@ namespace PSMinIO.Core.S3
                 queryParams, content: content);
 
             var doc = XDocument.Parse(response);
-            var etag = doc.Descendants("ETag").FirstOrDefault()?.Value?.Trim('"') ?? "";
+
+            // Handle XML namespace properly
+            var ns = doc.Root?.GetDefaultNamespace();
+            var etag = ns != null
+                ? doc.Descendants(ns + "ETag").FirstOrDefault()?.Value?.Trim('"') ?? ""
+                : doc.Descendants("ETag").FirstOrDefault()?.Value?.Trim('"') ?? "";
 
             return new CompleteMultipartUploadResult
             {
