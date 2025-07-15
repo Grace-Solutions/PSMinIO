@@ -62,6 +62,9 @@ namespace PSMinIO.Core.S3
             _progressCollector.QueueProgressUpdate(2, "File Upload",
                 $"Uploading {fileInfo.Name} ({SizeFormatter.FormatBytes(totalSize)})", 0, 1);
 
+            // Process initial progress updates
+            _progressCollector.ProcessQueuedUpdates();
+
             var uploadId = resumeUploadId;
             var parts = new ConcurrentDictionary<int, PartInfo>();
             var operationStartTime = DateTime.UtcNow;
@@ -93,6 +96,9 @@ namespace PSMinIO.Core.S3
                 _progressCollector.QueueVerboseMessage("Beginning multipart upload - Upload ID: {0}", uploadId!);
                 _progressCollector.QueueVerboseMessage("Upload configuration - Chunk size: {0}, Total parts: {1}, Max parallel: {2}",
                     SizeFormatter.FormatBytes(effectiveChunkSize), totalParts, _maxParallelUploads);
+
+                // Process verbose messages and progress updates
+                _progressCollector.ProcessQueuedUpdates();
 
                 // Upload parts in parallel
                 var uploadTasks = new List<Task>();
@@ -134,6 +140,9 @@ namespace PSMinIO.Core.S3
 
                             _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})",
                                 partNum, totalParts, SizeFormatter.FormatBytes(partSize));
+
+                            // Process progress updates immediately
+                            _progressCollector.ProcessQueuedUpdates();
                         }
                         finally
                         {
@@ -161,6 +170,9 @@ namespace PSMinIO.Core.S3
                 // Complete all progress layers
                 _progressCollector.QueueProgressCompletion(2, "File Upload", 1);
                 _progressCollector.QueueProgressCompletion(1, "Multipart Upload Collection");
+
+                // Process final progress updates
+                _progressCollector.ProcessQueuedUpdates();
 
                 return new MultipartUploadResult
                 {
