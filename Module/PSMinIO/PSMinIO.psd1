@@ -3,7 +3,7 @@
     RootModule = 'bin\PSMinIO.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.07.11.1453'
+    ModuleVersion = '2025.07.14.2318'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -21,7 +21,7 @@
     Copyright = '(c) 2025 Grace Solutions. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'A comprehensive PowerShell module for MinIO object storage operations with enterprise-grade features including multipart uploads/downloads, presigned URLs, bucket policies, advanced metadata handling, and performance monitoring. Built with custom REST API implementation for optimal PowerShell compatibility.'
+    Description = 'A comprehensive PowerShell module for MinIO object storage operations with enterprise-grade features including multipart uploads/downloads, bucket directory management, presigned URLs, bucket policies, advanced metadata handling, and performance monitoring. Built with custom REST API implementation for optimal PowerShell compatibility.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -73,6 +73,8 @@
         'Get-MinIOObjectContent',
         'Get-MinIOObjectContentMultipart',
         'New-MinIOObjectMultipart',
+        'New-MinIOBucketFolder',
+        'Remove-MinIOBucketFolder',
         'Get-MinIOZipArchive',
         'New-MinIOZipArchive',
         'Get-MinIOPresignedUrl',

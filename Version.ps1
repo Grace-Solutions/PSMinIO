@@ -11,7 +11,7 @@ $VersionInfo = @{
     Version = $Version
     
     # Semantic version for PowerShell Gallery (converted from date-based)
-    SemanticVersion = "2.0.0"
+    SemanticVersion = "2.1.0"
     
     # Build date
     BuildDate = $CurrentDate
