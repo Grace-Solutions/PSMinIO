@@ -160,5 +160,34 @@ namespace PSMinIO.Utils
 
             return FormatDuration(TimeSpan.FromSeconds(remainingSeconds));
         }
+
+        /// <summary>
+        /// Formats two byte values using the same unit based on the larger value
+        /// Example: FormatBytesIntelligent(1536MB, 4.57GB) returns "1.50 GB/4.57 GB"
+        /// </summary>
+        /// <param name="currentBytes">Current byte count</param>
+        /// <param name="totalBytes">Total byte count</param>
+        /// <param name="decimalPlaces">Number of decimal places to show (default: 2)</param>
+        /// <returns>Formatted size string with consistent units</returns>
+        public static string FormatBytesIntelligent(long currentBytes, long totalBytes, int decimalPlaces = 2)
+        {
+            if (totalBytes == 0) return $"{FormatBytes(currentBytes, decimalPlaces)}/0 B";
+
+            // Determine the unit based on the total size (larger value)
+            int unitIndex = 0;
+            double totalSize = Math.Abs(totalBytes);
+
+            while (totalSize >= 1024 && unitIndex < SizeUnits.Length - 1)
+            {
+                totalSize /= 1024;
+                unitIndex++;
+            }
+
+            // Format both values using the same unit
+            double currentSize = currentBytes / Math.Pow(1024, unitIndex);
+            double totalSizeFormatted = totalBytes / Math.Pow(1024, unitIndex);
+
+            return $"{currentSize.ToString($"F{decimalPlaces}")} {SizeUnits[unitIndex]}/{totalSizeFormatted.ToString($"F{decimalPlaces}")} {SizeUnits[unitIndex]}";
+        }
     }
 }

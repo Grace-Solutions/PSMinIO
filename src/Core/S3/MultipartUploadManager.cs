@@ -60,7 +60,7 @@ namespace PSMinIO.Core.S3
 
             // Layer 2: File Progress
             _progressCollector.QueueProgressUpdate(2, "File Upload",
-                $"Uploading {fileInfo.Name} ({SizeFormatter.FormatBytes(totalSize)})", 0, 1);
+                $"Uploading {fileInfo.Name} - {SizeFormatter.FormatBytesIntelligent(0, totalSize)}", 0, 1);
 
             // Process initial progress updates
             _progressCollector.ProcessQueuedUpdates();
@@ -161,9 +161,10 @@ namespace PSMinIO.Core.S3
                             var elapsed = DateTime.UtcNow - operationStartTime;
                             var speed = elapsed.TotalSeconds > 0 ? currentUploaded / elapsed.TotalSeconds : 0;
 
-                            // Update file progress (Layer 2)
+                            // Update file progress (Layer 2) with intelligent size formatting
+                            var sizeDisplay = SizeFormatter.FormatBytesIntelligent(currentUploaded, totalSize);
                             _progressCollector.QueueProgressUpdate(2, "File Upload",
-                                $"Part {partNum}/{totalParts} - {SizeFormatter.FormatBytes(currentUploaded)}/{SizeFormatter.FormatBytes(totalSize)} at {SizeFormatter.FormatSpeed(speed)}",
+                                $"Uploading {fileInfo.Name} - {sizeDisplay} (Part {partNum}/{totalParts}) at {SizeFormatter.FormatSpeed(speed)}",
                                 (int)fileProgress, 1);
 
                             // Log completion for larger chunks or milestone parts
@@ -319,11 +320,13 @@ namespace PSMinIO.Core.S3
             fileStream.Seek(offset, SeekOrigin.Begin);
 
             // Create progress-tracking stream for chunk upload (Layer 3)
+            // Use unique activity ID for each chunk: 100 + partNumber (allows up to 900 concurrent chunks)
+            var chunkActivityId = 100 + partNumber;
             var progressStream = new ProgressTrackingStream(fileStream, size,
                 (bytesRead, totalBytes) =>
                 {
                     var chunkProgress = (double)bytesRead / totalBytes * 100;
-                    _progressCollector.QueueProgressUpdate(3, "Uploading Chunk",
+                    _progressCollector.QueueProgressUpdate(chunkActivityId, "Uploading Chunk",
                         $"Part {partNumber}: {SizeFormatter.FormatBytes(bytesRead)}/{SizeFormatter.FormatBytes(totalBytes)}",
                         (int)chunkProgress, 2); // Parent: File Upload (Layer 2)
                 });
@@ -356,8 +359,8 @@ namespace PSMinIO.Core.S3
 
             var etag = response.Headers.ETag?.Tag?.Trim('"') ?? "";
 
-            // Complete chunk progress (Layer 3)
-            _progressCollector.QueueProgressCompletion(3, "Uploading Chunk", 2);
+            // Complete chunk progress (Layer 3) - use same unique activity ID
+            _progressCollector.QueueProgressCompletion(chunkActivityId, "Uploading Chunk", 2);
 
             return new PartInfo
             {
