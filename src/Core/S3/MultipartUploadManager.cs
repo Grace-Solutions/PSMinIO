@@ -147,7 +147,7 @@ namespace PSMinIO.Core.S3
                             partInfo.Status = PartStatus.Transferring;
 
                             var uploadedPart = UploadPart(bucketName, objectName, uploadId!, fileInfo,
-                                partNum, partOffset, partSize);
+                                partNum, partOffset, partSize, totalParts);
 
                             // Update with completed info
                             partInfo.ETag = uploadedPart.ETag;
@@ -308,7 +308,7 @@ namespace PSMinIO.Core.S3
         /// Uploads a single part
         /// </summary>
         private PartInfo UploadPart(string bucketName, string objectName, string uploadId,
-            FileInfo fileInfo, int partNumber, long offset, long size)
+            FileInfo fileInfo, int partNumber, long offset, long size, int totalParts)
         {
             var queryParams = new Dictionary<string, string>
             {
@@ -327,7 +327,7 @@ namespace PSMinIO.Core.S3
                 {
                     var chunkProgress = (double)bytesRead / totalBytes * 100;
                     _progressCollector.QueueProgressUpdate(chunkActivityId, "Uploading Chunk",
-                        $"Part {partNumber}: {SizeFormatter.FormatBytes(bytesRead)}/{SizeFormatter.FormatBytes(totalBytes)}",
+                        $"Part {partNumber} of {totalParts} - {SizeFormatter.FormatBytes(bytesRead)}/{SizeFormatter.FormatBytes(totalBytes)}",
                         (int)chunkProgress, 2); // Parent: File Upload (Layer 2)
                 });
 

@@ -12,6 +12,8 @@ namespace PSMinIO.Utils
         private readonly long _totalBytes;
         private readonly Action<long, long> _progressCallback;
         private long _bytesRead = 0;
+        private long _lastReportedBytes;
+        private readonly long _reportingThreshold;
         private readonly long _startPosition;
 
         public ProgressTrackingStream(Stream baseStream, long totalBytes, Action<long, long> progressCallback)
@@ -20,6 +22,10 @@ namespace PSMinIO.Utils
             _totalBytes = totalBytes;
             _progressCallback = progressCallback ?? throw new ArgumentNullException(nameof(progressCallback));
             _startPosition = baseStream.Position;
+
+            // Only report progress every 1% or 1MB, whichever is smaller (reduces overhead)
+            _reportingThreshold = Math.Min(totalBytes / 100, 1024 * 1024);
+            if (_reportingThreshold < 8192) _reportingThreshold = 8192; // Minimum 8KB threshold
         }
 
         public override bool CanRead => _baseStream.CanRead;
@@ -44,8 +50,12 @@ namespace PSMinIO.Utils
             var bytesRead = _baseStream.Read(buffer, offset, bytesToRead);
             _bytesRead += bytesRead;
 
-            // Report progress
-            _progressCallback(_bytesRead, _totalBytes);
+            // Report progress only when threshold is reached or at completion (reduces overhead)
+            if (_bytesRead - _lastReportedBytes >= _reportingThreshold || _bytesRead >= _totalBytes)
+            {
+                _progressCallback(_bytesRead, _totalBytes);
+                _lastReportedBytes = _bytesRead;
+            }
 
             return bytesRead;
         }
