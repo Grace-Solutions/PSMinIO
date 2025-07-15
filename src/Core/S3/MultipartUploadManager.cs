@@ -65,6 +65,10 @@ namespace PSMinIO.Core.S3
             // Process initial progress updates
             _progressCollector.ProcessQueuedUpdates();
 
+            // Log chunk generation
+            _progressCollector.QueueVerboseMessage("Generating {0} chunks for upload - File size: {1}, Chunk size: {2}",
+                totalParts, SizeFormatter.FormatBytes(totalSize), SizeFormatter.FormatBytes(effectiveChunkSize));
+
             var uploadId = resumeUploadId;
             var parts = new ConcurrentDictionary<int, PartInfo>();
             var operationStartTime = DateTime.UtcNow;
@@ -121,6 +125,17 @@ namespace PSMinIO.Core.S3
                         semaphore.Wait();
                         try
                         {
+                            // Create part info with initial status
+                            var partInfo = new PartInfo
+                            {
+                                PartNumber = partNum,
+                                Size = partSize,
+                                Offset = partOffset,
+                                Status = PartStatus.Queued,
+                                StartTime = DateTime.UtcNow
+                            };
+                            parts.TryAdd(partNum, partInfo);
+
                             // Log chunk start (not too verbose - only for larger chunks)
                             if (partSize >= 32 * 1024 * 1024) // Log for chunks >= 32MB
                             {
@@ -128,10 +143,17 @@ namespace PSMinIO.Core.S3
                                     partNum, totalParts, SizeFormatter.FormatBytes(partSize));
                             }
 
-                            var partInfo = UploadPart(bucketName, objectName, uploadId!, fileInfo,
+                            // Update status to transferring
+                            partInfo.Status = PartStatus.Transferring;
+
+                            var uploadedPart = UploadPart(bucketName, objectName, uploadId!, fileInfo,
                                 partNum, partOffset, partSize);
 
-                            parts.TryAdd(partNum, partInfo);
+                            // Update with completed info
+                            partInfo.ETag = uploadedPart.ETag;
+                            partInfo.MD5Hash = uploadedPart.MD5Hash;
+                            partInfo.Status = PartStatus.Completed;
+                            partInfo.CompletionTime = DateTime.UtcNow;
                             
                             // Update progress
                             var currentUploaded = Interlocked.Add(ref uploadedBytes, partSize);
@@ -147,12 +169,29 @@ namespace PSMinIO.Core.S3
                             // Log completion for larger chunks or milestone parts
                             if (partSize >= 32 * 1024 * 1024 || partNum % 10 == 0 || partNum == totalParts)
                             {
-                                _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})",
-                                    partNum, totalParts, SizeFormatter.FormatBytes(partSize));
+                                _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2}) in {3}",
+                                    partNum, totalParts, SizeFormatter.FormatBytes(partSize),
+                                    SizeFormatter.FormatDuration(partInfo.Duration ?? TimeSpan.Zero));
                             }
 
-                            // Process progress updates immediately
+                            // Process progress updates immediately for real-time display
                             _progressCollector.ProcessQueuedUpdates();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Update part status to failed
+                            if (parts.TryGetValue(partNum, out var failedPart))
+                            {
+                                failedPart.Status = PartStatus.Failed;
+                                failedPart.ErrorMessage = ex.Message;
+                                failedPart.CompletionTime = DateTime.UtcNow;
+                            }
+
+                            _progressCollector.QueueVerboseMessage("Failed to upload part {0}/{1}: {2}",
+                                partNum, totalParts, ex.Message);
+                            _progressCollector.ProcessQueuedUpdates();
+
+                            throw new InvalidOperationException($"Failed to upload part {partNum}: {ex.Message}", ex);
                         }
                         finally
                         {
@@ -360,6 +399,17 @@ namespace PSMinIO.Core.S3
     }
 
     /// <summary>
+    /// Status of a multipart upload part
+    /// </summary>
+    public enum PartStatus
+    {
+        Queued,
+        Transferring,
+        Completed,
+        Failed
+    }
+
+    /// <summary>
     /// Information about an uploaded part
     /// </summary>
     public class PartInfo
@@ -368,6 +418,13 @@ namespace PSMinIO.Core.S3
         public string ETag { get; set; } = string.Empty;
         public long Size { get; set; }
         public string MD5Hash { get; set; } = string.Empty;
+        public PartStatus Status { get; set; } = PartStatus.Queued;
+        public string? ErrorMessage { get; set; }
+        public long Offset { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? CompletionTime { get; set; }
+        public TimeSpan? Duration => StartTime.HasValue && CompletionTime.HasValue ?
+            CompletionTime.Value - StartTime.Value : null;
     }
 
     /// <summary>
