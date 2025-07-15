@@ -174,8 +174,7 @@ namespace PSMinIO.Core.S3
                                     SizeFormatter.FormatDuration(partInfo.Duration ?? TimeSpan.Zero));
                             }
 
-                            // Process progress updates immediately for real-time display
-                            _progressCollector.ProcessQueuedUpdates();
+                            // Don't call ProcessQueuedUpdates from background thread - PowerShell threading issue
                         }
                         catch (Exception ex)
                         {
@@ -189,7 +188,6 @@ namespace PSMinIO.Core.S3
 
                             _progressCollector.QueueVerboseMessage("Failed to upload part {0}/{1}: {2}",
                                 partNum, totalParts, ex.Message);
-                            _progressCollector.ProcessQueuedUpdates();
 
                             throw new InvalidOperationException($"Failed to upload part {partNum}: {ex.Message}", ex);
                         }
@@ -202,8 +200,16 @@ namespace PSMinIO.Core.S3
                     uploadTasks.Add(uploadTask);
                 }
 
-                // Wait for all uploads to complete
-                Task.WaitAll(uploadTasks.ToArray());
+                // Wait for all uploads to complete with periodic progress updates
+                var allTasks = uploadTasks.ToArray();
+                while (!Task.WaitAll(allTasks, 1000)) // Wait 1 second at a time
+                {
+                    // Process progress updates from main thread every second
+                    _progressCollector.ProcessQueuedUpdates();
+                }
+
+                // Process final updates
+                _progressCollector.ProcessQueuedUpdates();
 
                 // Complete multipart upload
                 var sortedParts = parts.Values.OrderBy(p => p.PartNumber).ToList();
