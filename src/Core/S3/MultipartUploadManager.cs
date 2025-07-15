@@ -84,6 +84,15 @@ namespace PSMinIO.Core.S3
                     uploadId = InitiateMultipartUpload(bucketName, objectName, metadata);
                     _progressCollector.QueueVerboseMessage("Initiated multipart upload with ID: {0}", uploadId);
                 }
+                else
+                {
+                    _progressCollector.QueueVerboseMessage("Resuming multipart upload with ID: {0}", uploadId);
+                }
+
+                // Log upload details before starting
+                _progressCollector.QueueVerboseMessage("Beginning multipart upload - Upload ID: {0}", uploadId!);
+                _progressCollector.QueueVerboseMessage("Upload configuration - Chunk size: {0}, Total parts: {1}, Max parallel: {2}",
+                    SizeFormatter.FormatBytes(effectiveChunkSize), totalParts, _maxParallelUploads);
 
                 // Upload parts in parallel
                 var uploadTasks = new List<Task>();
