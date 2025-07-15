@@ -136,12 +136,9 @@ namespace PSMinIO.Core.S3
                             };
                             parts.TryAdd(partNum, partInfo);
 
-                            // Log chunk start (not too verbose - only for larger chunks)
-                            if (partSize >= 32 * 1024 * 1024) // Log for chunks >= 32MB
-                            {
-                                _progressCollector.QueueVerboseMessage("Starting upload of part {0}/{1} ({2})",
-                                    partNum, totalParts, SizeFormatter.FormatBytes(partSize));
-                            }
+                            // Log chunk start for all chunks (provides better visibility)
+                            _progressCollector.QueueVerboseMessage("Starting upload of part {0}/{1} ({2})",
+                                partNum, totalParts, SizeFormatter.FormatBytes(partSize));
 
                             // Update status to transferring
                             partInfo.Status = PartStatus.Transferring;
@@ -164,7 +161,7 @@ namespace PSMinIO.Core.S3
                             // Update file progress (Layer 2) with intelligent size formatting
                             var sizeDisplay = SizeFormatter.FormatBytesIntelligent(currentUploaded, totalSize);
                             _progressCollector.QueueProgressUpdate(2, "File Upload",
-                                $"Uploading {fileInfo.Name} - {sizeDisplay} (Part {partNum}/{totalParts}) at {SizeFormatter.FormatSpeed(speed)}",
+                                $"Uploading {fileInfo.Name} - {sizeDisplay} at {SizeFormatter.FormatSpeed(speed)}",
                                 (int)fileProgress, 1);
 
                             // Log completion for larger chunks or milestone parts
@@ -200,6 +197,9 @@ namespace PSMinIO.Core.S3
 
                     uploadTasks.Add(uploadTask);
                 }
+
+                // Process initial "starting upload" messages immediately
+                _progressCollector.ProcessQueuedUpdates();
 
                 // Wait for all uploads to complete with periodic progress updates
                 var allTasks = uploadTasks.ToArray();
