@@ -56,6 +56,14 @@ namespace PSMinIO.Cmdlets
         public int MaxParallelUploads { get; set; } = 4;
 
         /// <summary>
+        /// Optional bucket directory path where files should be uploaded
+        /// </summary>
+        [Parameter]
+        [ValidateNotNullOrEmpty]
+        [Alias("Prefix", "Folder")]
+        public string? BucketDirectory { get; set; }
+
+        /// <summary>
         /// Content type of the object (auto-detected if not specified)
         /// </summary>
         [Parameter]
@@ -106,6 +114,16 @@ namespace PSMinIO.Cmdlets
             // Determine object name
             var effectiveObjectName = ObjectName ?? FilePath.Name;
 
+            // Apply bucket directory prefix if specified
+            if (!string.IsNullOrWhiteSpace(BucketDirectory))
+            {
+                var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
+                if (!string.IsNullOrEmpty(sanitizedDirectory))
+                {
+                    effectiveObjectName = $"{sanitizedDirectory}/{effectiveObjectName}";
+                }
+            }
+
             // Auto-detect content type if not specified
             var effectiveContentType = ContentType ?? GetContentType(FilePath.Extension);
 
@@ -124,9 +142,26 @@ namespace PSMinIO.Cmdlets
             {
                 var result = ExecuteOperation("MultipartUpload", () =>
                 {
-                    WriteVerboseMessage("Starting multipart upload: {0} -> {1}/{2}", 
+                    // Check if bucket exists first
+                    if (!S3Client.BucketExists(BucketName))
+                    {
+                        throw new InvalidOperationException($"Bucket '{BucketName}' does not exist");
+                    }
+
+                    // Create bucket directory structure if specified
+                    if (!string.IsNullOrWhiteSpace(BucketDirectory))
+                    {
+                        var sanitizedDirectory = SanitizeBucketDirectory(BucketDirectory!);
+                        if (!string.IsNullOrEmpty(sanitizedDirectory))
+                        {
+                            WriteVerboseMessage("Ensuring bucket directory exists: {0}", sanitizedDirectory);
+                            EnsureBucketDirectoryExists(sanitizedDirectory);
+                        }
+                    }
+
+                    WriteVerboseMessage("Starting multipart upload: {0} -> {1}/{2}",
                         FilePath.FullName, BucketName, effectiveObjectName);
-                    WriteVerboseMessage("File size: {0}, Chunk size: {1}, Max parallel uploads: {2}", 
+                    WriteVerboseMessage("File size: {0}, Chunk size: {1}, Max parallel uploads: {2}",
                         SizeFormatter.FormatBytes(FilePath.Length), SizeFormatter.FormatBytes(ChunkSize), MaxParallelUploads);
 
                     if (!string.IsNullOrEmpty(ResumeUploadId))
@@ -207,6 +242,90 @@ namespace PSMinIO.Cmdlets
                 ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 _ => "application/octet-stream"
             };
+        }
+
+        /// <summary>
+        /// Sanitizes bucket directory path and ensures proper format
+        /// Handles paths like "/Folder1/Folder2/Folder3" or "Folder1\Folder2\Folder3"
+        /// </summary>
+        /// <param name="directory">Raw directory path</param>
+        /// <returns>Sanitized directory path with forward slashes</returns>
+        private string SanitizeBucketDirectory(string directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                return string.Empty;
+
+            // Remove leading and trailing whitespace and slashes
+            var cleanDirectory = directory.Trim().Trim('/', '\\');
+
+            if (string.IsNullOrEmpty(cleanDirectory))
+                return string.Empty;
+
+            // Split by both forward and back slashes, then clean each part
+            var parts = cleanDirectory.Split(new char[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Clean each part: trim whitespace, remove invalid characters, ensure not empty
+            var cleanedParts = parts
+                .Select(part => part.Trim())
+                .Where(part => !string.IsNullOrEmpty(part))
+                .Select(part => part.Replace("\\", "").Replace("/", "")) // Remove any remaining slashes
+                .Where(part => !string.IsNullOrEmpty(part)); // Filter again after cleaning
+
+            // Join with forward slashes (S3/MinIO standard)
+            var result = string.Join("/", cleanedParts);
+
+            WriteVerboseMessage("Sanitized bucket directory: '{0}' -> '{1}'", directory, result);
+            return result;
+        }
+
+        /// <summary>
+        /// Creates bucket directory structure if it doesn't exist
+        /// </summary>
+        /// <param name="directoryPath">Directory path to create</param>
+        private void EnsureBucketDirectoryExists(string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+                return;
+
+            var parts = directoryPath.Split('/');
+            var currentPath = string.Empty;
+
+            foreach (var part in parts)
+            {
+                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                var folderPath = $"{currentPath}/";
+
+                try
+                {
+                    // Check if this directory level already exists by trying to list objects with this prefix
+                    var existingObjects = S3Client.ListObjects(BucketName, folderPath, false);
+                    var folderExists = existingObjects.Any(obj => obj.Name == folderPath);
+
+                    if (!folderExists)
+                    {
+                        WriteVerboseMessage("Creating bucket directory: {0}", folderPath);
+                        try
+                        {
+                            // Create the directory by uploading an empty object with trailing slash
+                            using (var emptyStream = new MemoryStream())
+                            {
+                                S3Client.PutObject(BucketName, folderPath, emptyStream, "application/x-directory", null, null);
+                            }
+                            WriteVerboseMessage("Successfully created bucket directory: {0}", folderPath);
+                        }
+                        catch (Exception createEx)
+                        {
+                            // Directory creation failed, but this is not critical since MinIO creates directories implicitly
+                            WriteVerboseMessage("Directory creation failed (non-critical): {0} - {1}", folderPath, createEx.Message);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Listing failed, but this is not critical for the upload operation
+                    WriteVerboseMessage("Could not check directory existence (non-critical): {0} - {1}", folderPath, ex.Message);
+                }
+            }
         }
     }
 }
