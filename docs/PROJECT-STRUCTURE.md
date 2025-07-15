@@ -42,6 +42,7 @@ PSMinIO/
 │   ├── USAGE.md                    # Comprehensive usage guide
 │   ├── RELEASE-NOTES.md            # Release notes
 │   ├── POWERSHELL-GALLERY-RELEASE.md # Gallery release guide
+│   ├── POWERSHELL-THREADING-RULES.md # Critical PowerShell threading patterns
 │   └── PROJECT-STRUCTURE.md        # This file
 │
 ├── Artifacts/                      # Build artifacts

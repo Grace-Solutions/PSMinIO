@@ -8,6 +8,21 @@ namespace PSMinIO.Utils
     /// <summary>
     /// Thread-safe progress data collector that accumulates progress updates from background threads
     /// and allows the main thread to safely report them to PowerShell
+    ///
+    /// CRITICAL THREADING RULE:
+    /// PowerShell cmdlets can ONLY call Write-Progress, Write-Verbose, Write-Object, Write-Error
+    /// from the main cmdlet thread - NEVER from background threads!
+    ///
+    /// USAGE PATTERN:
+    /// - Background threads: Call QueueProgressUpdate(), QueueVerboseMessage() (thread-safe)
+    /// - Main thread ONLY: Call ProcessQueuedUpdates() to display queued updates
+    ///
+    /// EXAMPLE:
+    /// Task.Run(() => {
+    ///     collector.QueueProgressUpdate(1, "Processing", "Status", 50); // ✅ Safe
+    ///     // WriteProgress(...); // ❌ THREADING ERROR!
+    /// });
+    /// collector.ProcessQueuedUpdates(); // ✅ Only from main thread
     /// </summary>
     public class ThreadSafeProgressCollector
     {
