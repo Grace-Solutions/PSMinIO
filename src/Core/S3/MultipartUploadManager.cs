@@ -85,15 +85,14 @@ namespace PSMinIO.Core.S3
                 if (string.IsNullOrEmpty(uploadId))
                 {
                     uploadId = InitiateMultipartUpload(bucketName, objectName, metadata);
-                    _progressCollector.QueueVerboseMessage("Initiated multipart upload with ID: {0}", uploadId);
+                    _progressCollector.QueueVerboseMessage("Initiated multipart upload - Upload ID: {0}", uploadId!);
                 }
                 else
                 {
-                    _progressCollector.QueueVerboseMessage("Resuming multipart upload with ID: {0}", uploadId);
+                    _progressCollector.QueueVerboseMessage("Resuming multipart upload - Upload ID: {0}", uploadId!);
                 }
 
-                // Log upload details before starting
-                _progressCollector.QueueVerboseMessage("Beginning multipart upload - Upload ID: {0}", uploadId!);
+                // Log upload configuration
                 _progressCollector.QueueVerboseMessage("Upload configuration - Chunk size: {0}, Total parts: {1}, Max parallel: {2}",
                     SizeFormatter.FormatBytes(effectiveChunkSize), totalParts, _maxParallelUploads);
 
@@ -122,9 +121,16 @@ namespace PSMinIO.Core.S3
                         semaphore.Wait();
                         try
                         {
+                            // Log chunk start (not too verbose - only for larger chunks)
+                            if (partSize >= 32 * 1024 * 1024) // Log for chunks >= 32MB
+                            {
+                                _progressCollector.QueueVerboseMessage("Starting upload of part {0}/{1} ({2})",
+                                    partNum, totalParts, SizeFormatter.FormatBytes(partSize));
+                            }
+
                             var partInfo = UploadPart(bucketName, objectName, uploadId!, fileInfo,
                                 partNum, partOffset, partSize);
-                            
+
                             parts.TryAdd(partNum, partInfo);
                             
                             // Update progress
@@ -138,8 +144,12 @@ namespace PSMinIO.Core.S3
                                 $"Part {partNum}/{totalParts} - {SizeFormatter.FormatBytes(currentUploaded)}/{SizeFormatter.FormatBytes(totalSize)} at {SizeFormatter.FormatSpeed(speed)}",
                                 (int)fileProgress, 1);
 
-                            _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})",
-                                partNum, totalParts, SizeFormatter.FormatBytes(partSize));
+                            // Log completion for larger chunks or milestone parts
+                            if (partSize >= 32 * 1024 * 1024 || partNum % 10 == 0 || partNum == totalParts)
+                            {
+                                _progressCollector.QueueVerboseMessage("Completed part {0}/{1} ({2})",
+                                    partNum, totalParts, SizeFormatter.FormatBytes(partSize));
+                            }
 
                             // Process progress updates immediately
                             _progressCollector.ProcessQueuedUpdates();
