@@ -202,11 +202,10 @@ namespace PSMinIO.Core.S3
 
             var doc = XDocument.Parse(response);
 
-            // Handle XML namespace properly
-            var ns = doc.Root?.GetDefaultNamespace();
-            var uploadId = ns != null
-                ? doc.Descendants(ns + "UploadId").FirstOrDefault()?.Value
-                : doc.Descendants("UploadId").FirstOrDefault()?.Value;
+            // Handle XML namespace properly - use LocalName approach for compatibility
+            var uploadId = doc.Descendants()
+                .Where(e => e.Name.LocalName == "UploadId")
+                .FirstOrDefault()?.Value;
 
             if (string.IsNullOrEmpty(uploadId))
             {
@@ -286,11 +285,10 @@ namespace PSMinIO.Core.S3
 
             var doc = XDocument.Parse(response);
 
-            // Handle XML namespace properly
-            var ns = doc.Root?.GetDefaultNamespace();
-            var etag = ns != null
-                ? doc.Descendants(ns + "ETag").FirstOrDefault()?.Value?.Trim('"') ?? ""
-                : doc.Descendants("ETag").FirstOrDefault()?.Value?.Trim('"') ?? "";
+            // Handle XML namespace properly - use LocalName approach for compatibility
+            var etag = doc.Descendants()
+                .Where(e => e.Name.LocalName == "ETag")
+                .FirstOrDefault()?.Value?.Trim('"') ?? "";
 
             return new CompleteMultipartUploadResult
             {
